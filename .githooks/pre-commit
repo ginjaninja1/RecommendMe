@@ -1,0 +1,52 @@
+#!/bin/sh
+
+# Path to the temporary commit message file Git creates
+COMMIT_MSG_FILE=".git/COMMIT_EDITMSG"
+
+# If the message file doesn't exist yet, exit safely
+if [ ! -f "$COMMIT_MSG_FILE" ]; then
+    exit 0
+fi
+
+# Read the contents of the commit message
+COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+# Check if the commit message contains "[bump]"
+if echo "$COMMIT_MSG" | grep -q "\[bump\]"; then
+    echo "⚙️ Flag [bump] detected. Scanning src/ directory for a project file..."
+    
+    # DYNAMIC SEARCH: Finds the first .csproj file nested anywhere inside the src/ folder
+    CSPROJ_FILE=$(find src -name "*.csproj" -print -quit)
+
+    # Safety check: Verify a file was actually found
+    if [ -z "$CSPROJ_FILE" ]; then
+        echo "❌ Error: No .csproj file discovered inside the src/ folder. Aborting bump."
+        exit 1
+    fi
+
+    echo "🎯 Found project target: $CSPROJ_FILE"
+
+    # Extract the current version line (Windows/Unix safe)
+    CURRENT_VERSION=$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*/\1/p' "$CSPROJ_FILE" | tr -d '\r')
+
+    # Safety check: Verify the file actually contains a <Version> tag
+    if [ -z "$CURRENT_VERSION" ]; then
+        echo "❌ Error: Could not find a <Version> tags in $CSPROJ_FILE. Please add <Version>0.0.0.1</Version> to your project file."
+        exit 1
+    fi
+
+    # Split the 4-digit version components (Major.Minor.Build.Revision)
+    IFS='.' read -r major minor build revision <<< "$CURRENT_VERSION"
+
+    # Increment the fourth digit (revision number)
+    NEW_REVISION=$((revision + 1))
+    NEW_VERSION="$major.$minor.$build.$NEW_REVISION"
+
+    # Replace the old version with the new one in the file
+    sed -i "s/<Version>$CURRENT_VERSION<\/Version>/<Version>$NEW_VERSION<\/Version>/" "$CSPROJ_FILE"
+
+    # Stage the updated project file dynamically
+    git add "$CSPROJ_FILE"
+    
+    echo "✅ Version successfully bumped to $NEW_VERSION"
+fi

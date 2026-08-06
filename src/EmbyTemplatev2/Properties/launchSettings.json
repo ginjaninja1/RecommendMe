@@ -1,0 +1,10 @@
+{
+    "profiles": {
+        "Debug with Emby": {
+            "commandName": "Executable",
+            "executablePath": "%APPDATA%\\Emby-Server\\system\\EmbyServer.exe",
+            "commandLineArgs": "-nointerface",
+            "workingDirectory": "%APPDATA%\\Emby-Server\\system\\"
+        }
+    }
+}
