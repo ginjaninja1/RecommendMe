@@ -1,30 +1,16 @@
-﻿using System.Collections.Generic;
-using MediaBrowser.Model.Plugins;
-using RecommendMe.UI.Config;
+﻿using MediaBrowser.Model.Plugins;
 
 namespace RecommendMe.Configuration
 {
     /// <summary>
-    /// The plugin's persisted settings - and the ONLY class involved in
-    /// persistence. This uses Emby's standard BasePlugin&lt;T&gt; mechanism:
-    /// Plugin.Instance.Configuration / SaveConfiguration() / UpdateConfiguration(),
-    /// which serializes to XML in the plugin configurations folder
-    /// automatically. No custom store, no hand-rolled JSON round-trip.
-    ///
-    /// This class has no UI/visual members, by construction - it isn't
-    /// rendered by GenericEdit and is never assigned as ContentData, so
-    /// there's nothing for it to accidentally leak. The config page instead
-    /// builds a separate view-model, ConfigUI, fresh from this class every
-    /// time it's shown - see RecommendMe.UI.Config.ConfigViewBuilder.
+    /// Emby's BasePlugin&lt;T&gt; requires a configuration type, but
+    /// RecommendMe deliberately does NOT use it for real settings: admin
+    /// settings, recommendation history, and user preferences are all
+    /// persisted as JSON under ProgramData\data\RecommendMe\ instead (see
+    /// RecommendMe.Storage). This class is therefore intentionally near-empty -
+    /// it exists only to satisfy BasePlugin&lt;T&gt;.
     /// </summary>
     public class PluginConfiguration : BasePluginConfiguration
     {
-        public bool EnablePlugin { get; set; } = true;
-
-        /// <summary>
-        /// The real, persisted library/path filter data.
-        /// </summary>
-        public List<LibraryPathFilterItem> LibraryPaths { get; set; } =
-            new List<LibraryPathFilterItem>();
     }
 }

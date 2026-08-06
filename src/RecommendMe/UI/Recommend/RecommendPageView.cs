@@ -1,0 +1,151 @@
+﻿using System;
+using System.Linq;
+using System.Threading.Tasks;
+using MediaBrowser.Controller;
+using MediaBrowser.Controller.Entities;
+using MediaBrowser.Model.Logging;
+using MediaBrowser.Model.Plugins;
+using MediaBrowser.Model.Plugins.UI.Views;
+using RecommendMe.Services;
+using RecommendMe.UI.History;
+using RecommendMe.UIBaseClasses.Views;
+
+namespace RecommendMe.UI.Recommend
+{
+    /// <summary>
+    /// The main user-facing "Search &amp; Recommend" page. Deliberately kept
+    /// to construction + command handlers, mirroring the split used by the
+    /// admin ConfigPageView: RecommendUI is the view-model, RecommendViewBuilder
+    /// builds its dynamic parts, RecommendCommands owns command id parsing.
+    /// </summary>
+    internal class RecommendPageView : PluginPageView
+    {
+        private readonly IServerApplicationHost applicationHost;
+        private readonly IJsonSerializer jsonSerializer;
+        private readonly MediaSearchService searchService;
+        private readonly ILogger logger;
+
+        public RecommendPageView(PluginInfo pluginInfo, IServerApplicationHost applicationHost, ILogger logger)
+            : base(pluginInfo.Id)
+        {
+            this.applicationHost = applicationHost;
+            this.logger = logger;
+            this.jsonSerializer = applicationHost.Resolve<IJsonSerializer>();
+            this.searchService = new MediaSearchService(Plugin.Instance.LibraryManager);
+
+            this.ShowSave = false;
+            this.ShowBack = false;
+
+            // NOTE: this.User (the browsing user) is only populated by the
+            // Emby UI-page framework AFTER this constructor returns (see
+            // PageControllerHostBase.GetUIView: CreateDefaultPageView() runs
+            // first, `currentUIView.User = userDto` runs after). So nothing
+            // user-specific (target list, search results) can be built here -
+            // it's built lazily in RunCommand below, where this.User is
+            // guaranteed to already be set from the page's most recent load.
+            this.ContentData = new RecommendUI();
+        }
+
+        /// <summary>Resolves the browsing user from the framework-assigned UserDto. Only valid inside RunCommand.</summary>
+        private User CurrentUser =>
+            this.User != null ? Plugin.Instance.UserManager.GetUserById(this.User.Id) : null;
+
+        public override Task<IPluginUIView> RunCommand(string itemId, string commandId, string data)
+        {
+            var ui = (RecommendUI)this.ContentData;
+
+            // Mirrors the established pattern in this codebase (see the admin
+            // ConfigPageView's HandleSave): explicitly deserialize the posted
+            // payload rather than relying on the framework's own ContentData
+            // reassignment, and copy across only the real (non-generated)
+            // fields - SearchResults/TargetUserChoices/StatusMessage are
+            // always server-rebuilt, never trusted from the client.
+            if (!string.IsNullOrEmpty(data))
+            {
+                var incoming = this.jsonSerializer.DeserializeFromString<RecommendUI>(data);
+                if (incoming != null)
+                {
+                    ui.SearchTerm = incoming.SearchTerm;
+                    ui.SelectedTargetUserName = incoming.SelectedTargetUserName;
+                    ui.IsPrivate = incoming.IsPrivate;
+                }
+            }
+
+            var currentUser = this.CurrentUser;
+
+            if (currentUser == null)
+            {
+                ui.StatusMessage = RecommendViewBuilder.BuildStatusMessage("Could not identify the current user - please reload the page.", false);
+                return Task.FromResult<IPluginUIView>(this);
+            }
+
+            if (commandId == RecommendCommands.OpenHistory)
+            {
+                IPluginUIView dialog = new HistoryDialogView(this.PluginId, currentUser, this.applicationHost);
+                return Task.FromResult(dialog);
+            }
+
+            if (commandId == RecommendCommands.Search)
+            {
+                return Task.FromResult(this.HandleSearch(ui, currentUser));
+            }
+
+            if (RecommendCommands.TryParseSend(commandId, out var itemToRecommendId))
+            {
+                return this.HandleSendAsync(ui, currentUser, itemToRecommendId);
+            }
+
+            // updateformstate and anything else: refresh the target list
+            // (cheap) and re-render with whatever the client posted back.
+            ui.TargetUserChoices = RecommendViewBuilder.BuildTargetUserChoicesAsync(currentUser).GetAwaiter().GetResult();
+            return Task.FromResult<IPluginUIView>(this);
+        }
+
+        private IPluginUIView HandleSearch(RecommendUI ui, User currentUser)
+        {
+            ui.TargetUserChoices = RecommendViewBuilder.BuildTargetUserChoicesAsync(currentUser).GetAwaiter().GetResult();
+            var allowedTypes = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult().GloballyAllowedMediaTypes;
+            var results = this.searchService.Search(currentUser, ui.SearchTerm, allowedTypes);
+            ui.SearchResults = RecommendViewBuilder.BuildSearchResults(results);
+            ui.StatusMessage = new Emby.Web.GenericEdit.Elements.List.GenericItemList();
+            return this;
+        }
+
+        private async Task<IPluginUIView> HandleSendAsync(RecommendUI ui, User currentUser, long itemId)
+        {
+            try
+            {
+                var targetUser = RecommendViewBuilder.ResolveTargetUser(ui.SelectedTargetUserName, currentUser);
+                var item = Plugin.Instance.LibraryManager.GetItemById(itemId);
+
+                if (targetUser == null || item == null)
+                {
+                    ui.StatusMessage = RecommendViewBuilder.BuildStatusMessage("Select a recipient before recommending.", false);
+                    return this;
+                }
+
+                var mediaType = item.GetType().Name;
+
+                var result = await Plugin.Instance.RecommendationService
+                    .SendRecommendationAsync(currentUser, targetUser, item, mediaType, ui.IsPrivate)
+                    .ConfigureAwait(false);
+
+                ui.StatusMessage = result switch
+                {
+                    RecommendationResult.Success => RecommendViewBuilder.BuildStatusMessage($"Recommended \"{item.Name}\" to {targetUser.Name}.", true),
+                    RecommendationResult.NotPermitted => RecommendViewBuilder.BuildStatusMessage("You don't have permission to recommend this to that user.", false),
+                    RecommendationResult.AlreadyWatchedByRecipient => RecommendViewBuilder.BuildStatusMessage($"{targetUser.Name} has already watched this.", false),
+                    RecommendationResult.AlreadyActiveRecommendation => RecommendViewBuilder.BuildStatusMessage($"{targetUser.Name} already has an active recommendation for this item.", false),
+                    _ => RecommendViewBuilder.BuildStatusMessage("Something went wrong.", false)
+                };
+            }
+            catch (Exception ex)
+            {
+                this.logger.ErrorException("RecommendMe: error sending recommendation", ex);
+                ui.StatusMessage = RecommendViewBuilder.BuildStatusMessage("Something went wrong sending that recommendation.", false);
+            }
+
+            return this;
+        }
+    }
+}

@@ -5,7 +5,7 @@
     <AssemblyName>RecommendMe</AssemblyName>
     <RootNamespace>RecommendMe</RootNamespace>
     <LangVersion>latest</LangVersion>
-	  <Version>0.0.0.1</Version>
+	  <Version>0.1.0.0</Version>
 	  <Nullable>annotations</Nullable>
     
     
