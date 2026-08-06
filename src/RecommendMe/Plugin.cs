@@ -3,12 +3,14 @@ using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Collections;
+using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Session;
 using MediaBrowser.Model.Drawing;
 using MediaBrowser.Model.IO;
 using MediaBrowser.Model.Logging;
 using MediaBrowser.Model.Plugins.UI;
+using MediaBrowser.Model.Querying;
 using MediaBrowser.Model.Serialization;
 using RecommendMe.Configuration;
 using RecommendMe.Services;
@@ -102,6 +104,16 @@ namespace RecommendMe
         public IUserManager UserManager { get; }
 
         public ILibraryManager LibraryManager { get; }
+
+        /// <summary>
+        /// Convenience wrapper around the non-obsolete GetUserList(UserQuery)
+        /// API - IUserManager.Users itself is obsolete (flagged for "avoid
+        /// working with the entire user list all at once"), but this plugin's
+        /// admin matrix / target-user dropdowns genuinely do need the full
+        /// list. An empty UserQuery returns all users.
+        /// </summary>
+        public IReadOnlyList<User> GetAllUsers() =>
+            this.UserManager.GetUserList(new UserQuery());
 
         public override string Description =>
             "Lets users recommend movies, shows, and music to each other via native Emby Collections.";

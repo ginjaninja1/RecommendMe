@@ -25,7 +25,7 @@ namespace RecommendMe.UI.Recommend
 
             var choices = new List<string> { currentUser.Name + " (yourself)" };
 
-            foreach (var candidate in plugin.UserManager.Users)
+            foreach (var candidate in plugin.GetAllUsers())
             {
                 if (candidate.InternalId == currentUser.InternalId)
                 {
@@ -80,7 +80,7 @@ namespace RecommendMe.UI.Recommend
                 return currentUser;
             }
 
-            return Plugin.Instance.UserManager.Users.FirstOrDefault(u => u.Name == choice);
+            return Plugin.Instance.GetAllUsers().FirstOrDefault(u => u.Name == choice);
         }
 
         public static GenericItemList BuildStatusMessage(string primaryText, bool success)

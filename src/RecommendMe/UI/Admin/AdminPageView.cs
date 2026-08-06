@@ -17,13 +17,11 @@ namespace RecommendMe.UI.Admin
     /// </summary>
     internal class AdminPageView : PluginPageView
     {
-        private readonly IUserManager userManager;
         private readonly ILogger logger;
 
         public AdminPageView(PluginInfo pluginInfo, IServerApplicationHost applicationHost, ILogger logger)
             : base(pluginInfo.Id)
         {
-            this.userManager = applicationHost.Resolve<IUserManager>();
             this.logger = logger;
 
             this.ShowSave = false;
@@ -34,14 +32,16 @@ namespace RecommendMe.UI.Admin
 
         private void RebuildContentData()
         {
-            foreach (var user in this.userManager.Users)
+            var allUsers = Plugin.Instance.GetAllUsers();
+
+            foreach (var user in allUsers)
             {
                 Plugin.Instance.PermissionService.EnsureUserAccessEntryAsync(user).GetAwaiter().GetResult();
             }
 
             var settings = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult();
 
-            this.ContentData = AdminViewBuilder.Build(settings, this.userManager.Users.ToList());
+            this.ContentData = AdminViewBuilder.Build(settings, allUsers);
         }
 
         public override Task<IPluginUIView> RunCommand(string itemId, string commandId, string data)

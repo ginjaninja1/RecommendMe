@@ -36,7 +36,7 @@
             {
                 Name = "RecommendMeAdmin",
                 DisplayName = "RecommendMe",
-                EnableInMainMenu = false,
+                EnableInMainMenu = true,
                 EnableInUserMenu = false,
                 MenuIcon = "recommend",
                 IsMainConfigPage = true

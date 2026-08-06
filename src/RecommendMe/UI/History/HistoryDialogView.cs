@@ -16,21 +16,19 @@ namespace RecommendMe.UI.History
     internal class HistoryDialogView : PluginDialogView
     {
         private readonly User viewer;
-        private readonly IUserManager userManager;
         private readonly IJsonSerializer jsonSerializer;
 
         public HistoryDialogView(string pluginId, User viewer, IServerApplicationHost applicationHost)
             : base(pluginId)
         {
             this.viewer = viewer;
-            this.userManager = applicationHost.Resolve<IUserManager>();
             this.jsonSerializer = applicationHost.Resolve<IJsonSerializer>();
 
             var ui = new HistoryUI
             {
                 Grid = HistoryViewBuilder.BuildEmptyGrid(),
                 SenderChoices = new[] { HistoryFilters.Anyone }
-                    .Concat(this.userManager.Users.Select(u => u.Name))
+                    .Concat(Plugin.Instance.GetAllUsers().Select(u => u.Name))
                     .ToList()
             };
 

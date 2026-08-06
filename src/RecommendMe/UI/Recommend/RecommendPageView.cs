@@ -6,6 +6,7 @@ using MediaBrowser.Controller.Entities;
 using MediaBrowser.Model.Logging;
 using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Plugins.UI.Views;
+using MediaBrowser.Model.Serialization;
 using RecommendMe.Services;
 using RecommendMe.UI.History;
 using RecommendMe.UIBaseClasses.Views;

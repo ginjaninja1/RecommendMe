@@ -32,7 +32,7 @@ namespace RecommendMe.UI.Account
 
             if (receiveOk && (viewerEntry?.AllowReceiving ?? true))
             {
-                foreach (var candidate in plugin.UserManager.Users.Where(u => u.InternalId != viewer.InternalId).OrderBy(u => u.Name))
+                foreach (var candidate in plugin.GetAllUsers().Where(u => u.InternalId != viewer.InternalId).OrderBy(u => u.Name))
                 {
                     var sendOk = settings.SendScope == AccessScope.AllUsers
                         || settings.SendScopeUserIds.Contains(candidate.InternalId);
