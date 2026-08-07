@@ -9,8 +9,15 @@ namespace RecommendMe.UI.Admin
 {
     public class CollectionSettingsUI : EditableOptionsBase
     {
-        public override string EditorTitle => "Collections";
-        public override string EditorDescription => "Configure lifecycle and naming for RecommendMe-owned collections.";
+        public override string EditorTitle => "Config";
+        public override string EditorDescription => "Configure RecommendMe behaviour and collection settings.";
+
+        public CaptionItem ExpandUserBehaviourHeading { get; set; } = new CaptionItem("Expand User Behaviour");
+
+        [DisplayName("Always Expand Users and Groups")]
+        [Description("On: show every user and group and allow the page to scroll. Off: show search filters and limit each result list to 10 items.")]
+        [AutoPostBack(CollectionSettingsCommands.SaveExpansionSetting, nameof(AlwaysExpandUsersAndGroups))]
+        public bool AlwaysExpandUsersAndGroups { get; set; } = true;
 
         public CaptionItem CleanupHeading { get; set; } = new CaptionItem("Watched Recommendations");
 
@@ -48,6 +55,7 @@ namespace RecommendMe.UI.Admin
     internal static class CollectionSettingsCommands
     {
         public const string Apply = "collection-settings-apply";
+        public const string SaveExpansionSetting = "collection-settings-save-expansion";
         public const string SaveWatchedSettings = "collection-settings-save-watched";
     }
 }

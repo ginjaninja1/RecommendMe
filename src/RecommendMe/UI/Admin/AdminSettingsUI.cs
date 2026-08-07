@@ -11,9 +11,7 @@ namespace RecommendMe.UI.Admin
         public override string EditorTitle => "Users";
         public override string EditorDescription => "Control deterministic send and receive access for every user.";
 
-        [DisplayName("Always Expand Users and Groups")]
-        [Description("On: show every user and group and allow the page to scroll. Off: show search filters and limit each result list to 10 items.")]
-        [AutoPostBack(AdminCommands.ToggleExpansion, nameof(AlwaysExpandUsersAndGroups))]
+        [Browsable(false)]
         public bool AlwaysExpandUsersAndGroups { get; set; } = true;
 
         public CaptionItem NewUserHeading { get; set; } =

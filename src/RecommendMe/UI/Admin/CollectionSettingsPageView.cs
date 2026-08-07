@@ -31,6 +31,7 @@ namespace RecommendMe.UI.Admin
             var settings = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult();
             this.ContentData = state ?? new CollectionSettingsUI
             {
+                AlwaysExpandUsersAndGroups = settings.AlwaysExpandUsersAndGroups,
                 ClearWatchedRecommendations = settings.ClearWatchedRecommendations,
                 PreventWatchedRecommendations = settings.PreventWatchedRecommendations,
                 RecommendationCollectionPrefix = settings.RecommendationCollectionPrefix ?? string.Empty,
@@ -44,7 +45,16 @@ namespace RecommendMe.UI.Admin
                 ? (CollectionSettingsUI)this.ContentData
                 : this.serializer.DeserializeFromString<CollectionSettingsUI>(data) ?? new CollectionSettingsUI();
 
-            if (commandId == CollectionSettingsCommands.SaveWatchedSettings)
+            if (commandId == CollectionSettingsCommands.SaveExpansionSetting)
+            {
+                Plugin.Instance.AdminSettingsStore.MutateAsync(settings =>
+                    settings.AlwaysExpandUsersAndGroups = state.AlwaysExpandUsersAndGroups).GetAwaiter().GetResult();
+
+                this.logger.Info(
+                    "User and group expansion setting saved; alwaysExpand={0}.",
+                    state.AlwaysExpandUsersAndGroups);
+            }
+            else if (commandId == CollectionSettingsCommands.SaveWatchedSettings)
             {
                 Plugin.Instance.AdminSettingsStore.MutateAsync(settings =>
                 {

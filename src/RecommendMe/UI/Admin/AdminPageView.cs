@@ -45,11 +45,7 @@ namespace RecommendMe.UI.Admin
                 ? (AdminSettingsUI)this.ContentData
                 : this.serializer.DeserializeFromString<AdminSettingsUI>(data) ?? new AdminSettingsUI();
 
-            if (commandId == AdminCommands.ToggleExpansion)
-            {
-                Plugin.Instance.AdminSettingsStore.MutateAsync(s => s.AlwaysExpandUsersAndGroups = state.AlwaysExpandUsersAndGroups).GetAwaiter().GetResult();
-            }
-            else if (AdminCommands.TrySuspended(commandId, out var userId))
+            if (AdminCommands.TrySuspended(commandId, out var userId))
             {
                 Plugin.Instance.AdminSettingsStore.MutateAsync(s =>
                 {

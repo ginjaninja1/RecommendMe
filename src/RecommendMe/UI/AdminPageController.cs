@@ -48,7 +48,7 @@
             {
                 new TabPageController(pluginInfo, "RecommendMeGroups", "Groups", info => new GroupsPageView(info, applicationHost, logger), true),
                 new TabPageController(pluginInfo, "RecommendMeMedia", "Media", info => new MediaPageView(info, logger), true),
-                new TabPageController(pluginInfo, "RecommendMeCollectionSettings", "Collections", info => new CollectionSettingsPageView(info, applicationHost, logger), true)
+                new TabPageController(pluginInfo, "RecommendMeCollectionSettings", "Config", info => new CollectionSettingsPageView(info, applicationHost, logger), true)
             };
         }
 

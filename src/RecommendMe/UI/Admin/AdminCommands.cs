@@ -5,7 +5,6 @@ namespace RecommendMe.UI.Admin
     internal static class AdminCommands
     {
         public const string Refresh = "admin-refresh";
-        public const string ToggleExpansion = "admin-toggle-expansion";
         public const string SendToRefresh = "send-to-refresh";
         public const string ReceiveFromRefresh = "receive-from-refresh";
         public const string GroupMembershipRefresh = "group-membership-refresh";
