@@ -1,6 +1,8 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Emby.Web.GenericEdit.Common;
+using Emby.Web.GenericEdit.Elements;
 using MediaBrowser.Controller;
 using MediaBrowser.Model.Logging;
 using MediaBrowser.Model.Plugins;
@@ -38,13 +40,20 @@ namespace RecommendMe.UI.Admin
             var state = string.IsNullOrEmpty(data) ? (GroupsUI)this.ContentData : this.jsonSerializer.DeserializeFromString<GroupsUI>(data) ?? new GroupsUI();
             var changed = false;
 
-            if (commandId == GroupsCommands.Create && !string.IsNullOrWhiteSpace(state.NewGroupName))
+            if (commandId == GroupsCommands.Create)
             {
-                var name = state.NewGroupName.Trim();
+                var name = state.NewGroupName?.Trim();
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    SetCreateStatus(state, "A group name is required.", false);
+                    this.Rebuild(state);
+                    this.RaiseUIViewInfoChanged();
+                    return Task.FromResult<IPluginUIView>(this);
+                }
                 var settings = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult();
                 if (settings.Groups.Any(g => string.Equals(g.Name, name, StringComparison.OrdinalIgnoreCase)))
                 {
-                    state.StatusMessage = Recommend.RecommendViewBuilder.BuildStatusMessage($"A group named '{name}' already exists.", false);
+                    SetCreateStatus(state, $"A group named '{name}' already exists.", false);
                 }
                 else
                 {
@@ -55,9 +64,10 @@ namespace RecommendMe.UI.Admin
                         s.Groups.Add(new UserGroup { Name = name });
                         created = true;
                     }).GetAwaiter().GetResult();
-                    state.StatusMessage = created
-                        ? Recommend.RecommendViewBuilder.BuildStatusMessage($"Created group '{name}'.", true)
-                        : Recommend.RecommendViewBuilder.BuildStatusMessage($"A group named '{name}' already exists.", false);
+                    SetCreateStatus(
+                        state,
+                        created ? $"Created group '{name}'." : $"A group named '{name}' already exists.",
+                        created);
                     if (created)
                     {
                         state.NewGroupName = string.Empty;
@@ -67,11 +77,23 @@ namespace RecommendMe.UI.Admin
             }
             else if (GroupsCommands.TryMembers(commandId, out var membersGroupId))
             {
-                return Task.FromResult<IPluginUIView>(new GroupMembersDialogView(this.PluginId, membersGroupId, this.applicationHost));
+                return Task.FromResult<IPluginUIView>(new GroupMembersDialogView(
+                    this.PluginId,
+                    membersGroupId,
+                    this,
+                    () => this.Rebuild((GroupsUI)this.ContentData),
+                    this.applicationHost,
+                    this.logger));
             }
             else if (GroupsCommands.TryRename(commandId, out var renameGroupId))
             {
-                return Task.FromResult<IPluginUIView>(new RenameGroupDialogView(this.PluginId, renameGroupId, this.applicationHost));
+                return Task.FromResult<IPluginUIView>(new RenameGroupDialogView(
+                    this.PluginId,
+                    renameGroupId,
+                    this,
+                    () => this.Rebuild((GroupsUI)this.ContentData),
+                    this.applicationHost,
+                    this.logger));
             }
             else if (GroupsCommands.TryDelete(commandId, out var deleteGroupId))
             {
@@ -94,6 +116,17 @@ namespace RecommendMe.UI.Admin
         {
             this.Rebuild((GroupsUI)this.ContentData);
             this.RaiseUIViewInfoChanged();
+        }
+
+        private static void SetCreateStatus(GroupsUI state, string message, bool success)
+        {
+            if (state.CreateAction == null || state.CreateAction.Count == 0)
+            {
+                state.CreateAction = new GroupsUI().CreateAction;
+            }
+
+            state.CreateAction[0].SecondaryText = message;
+            state.CreateAction[0].Status = success ? ItemStatus.Succeeded : ItemStatus.Failed;
         }
     }
 }

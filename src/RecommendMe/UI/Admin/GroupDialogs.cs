@@ -16,9 +16,8 @@ namespace RecommendMe.UI.Admin
 {
     public class GroupMembersUI : EditableOptionsBase
     {
-        public string Title { get; set; }
-        public override string EditorTitle => Title;
-        public override string EditorDescription => "Search for a user, then add or remove them from this group.";
+        public override string EditorTitle => null;
+        public override string EditorDescription => null;
         [DisplayName("Username search")]
         [AutoPostBack(GroupsCommands.Refresh, nameof(UserSearch))]
         public string UserSearch { get; set; } = string.Empty;
@@ -28,20 +27,36 @@ namespace RecommendMe.UI.Admin
     internal class GroupMembersDialogView : PluginDialogView
     {
         private readonly string groupId;
+        private readonly string groupName;
         private readonly IJsonSerializer serializer;
-        public GroupMembersDialogView(string pluginId, string groupId, IServerApplicationHost host) : base(pluginId)
+        private readonly IPluginUIView parentPageView;
+        private readonly Action rebuildParentContent;
+        private readonly ILogger logger;
+        public GroupMembersDialogView(
+            string pluginId,
+            string groupId,
+            IPluginUIView parentPageView,
+            Action rebuildParentContent,
+            IServerApplicationHost host,
+            ILogger logger) : base(pluginId)
         {
             this.groupId = groupId;
+            this.parentPageView = parentPageView;
+            this.rebuildParentContent = rebuildParentContent;
+            this.logger = logger;
             this.serializer = host.Resolve<IJsonSerializer>();
-            this.AllowOk = true;
+            this.groupName = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult().Groups.First(g => g.Id == groupId).Name;
+            this.AllowOk = false;
+            this.AllowCancel = true;
             this.Rebuild(new GroupMembersUI());
         }
+
+        public override string Caption => "Add/remove users: " + this.groupName;
 
         private void Rebuild(GroupMembersUI state)
         {
             var settings = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult();
             var group = settings.Groups.FirstOrDefault(g => g.Id == this.groupId);
-            state.Title = group == null ? "Group Members" : $"Members of {group.Name}";
             state.UserResults = new GenericItemList();
             if (group != null && !string.IsNullOrWhiteSpace(state.UserSearch))
             {
@@ -62,6 +77,7 @@ namespace RecommendMe.UI.Admin
 
         public override Task<IPluginUIView> RunCommand(string itemId, string commandId, string data)
         {
+            this.logger.Info("RecommendMe: GroupMembersDialog command '{0}' for group '{1}' ({2})", commandId ?? "(null)", this.groupName, this.groupId);
             var state = string.IsNullOrEmpty(data) ? (GroupMembersUI)this.ContentData : this.serializer.DeserializeFromString<GroupMembersUI>(data) ?? new GroupMembersUI();
             if (GroupsCommands.TryToggleUser(commandId, out var parsedGroupId, out var userId) && parsedGroupId == this.groupId)
             {
@@ -71,65 +87,124 @@ namespace RecommendMe.UI.Admin
                     if (group == null) return;
                     if (group.MemberUserIds.Contains(userId)) group.MemberUserIds.Remove(userId); else group.MemberUserIds.Add(userId);
                 }).GetAwaiter().GetResult();
+                this.logger.Info("RecommendMe: toggled user {0} membership in group '{1}' ({2})", userId, this.groupName, this.groupId);
+            }
+            else if (string.Equals(commandId, "DialogCancel", StringComparison.OrdinalIgnoreCase))
+            {
+                this.logger.Info("RecommendMe: group membership dialog closed for '{0}' ({1})", this.groupName, this.groupId);
+                this.rebuildParentContent();
+                return Task.FromResult(this.parentPageView);
             }
             this.Rebuild(state);
             return Task.FromResult<IPluginUIView>(this);
         }
 
         public override Task OnOkCommand(string providerId, string commandId, string data) => Task.CompletedTask;
+        public override Task Cancel() => Task.CompletedTask;
     }
 
     public class RenameGroupUI : EditableOptionsBase
     {
-        public string Title { get; set; }
-        public override string EditorTitle => Title;
-        public override string EditorDescription => "Enter a unique group name and save.";
-        [DisplayName("Group name")]
-        [AutoPostBack(GroupsCommands.ValidateRename, nameof(Name))]
+        public override string EditorTitle => null;
+        public override string EditorDescription => null;
+        [DisplayName("Rename to")]
         public string Name { get; set; }
-        public GenericItemList StatusMessage { get; set; } = new GenericItemList();
+        public ButtonItem RenameButton { get; set; } = new ButtonItem("Rename")
+        {
+            StandardIcon = StandardIcons.Edit,
+            CommandId = GroupsCommands.ConfirmRename
+        };
+        public CaptionItem ValidationStatus { get; set; } = new CaptionItem(string.Empty);
     }
 
     internal class RenameGroupDialogView : PluginDialogView
     {
         private readonly string groupId;
+        private readonly string currentName;
         private readonly IJsonSerializer serializer;
-        public RenameGroupDialogView(string pluginId, string groupId, IServerApplicationHost host) : base(pluginId)
+        private readonly IPluginUIView parentPageView;
+        private readonly Action rebuildParentContent;
+        private readonly ILogger logger;
+        public RenameGroupDialogView(
+            string pluginId,
+            string groupId,
+            IPluginUIView parentPageView,
+            Action rebuildParentContent,
+            IServerApplicationHost host,
+            ILogger logger) : base(pluginId)
         {
             this.groupId = groupId;
+            this.parentPageView = parentPageView;
+            this.rebuildParentContent = rebuildParentContent;
+            this.logger = logger;
             this.serializer = host.Resolve<IJsonSerializer>();
             var group = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult().Groups.First(g => g.Id == groupId);
-            this.ContentData = new RenameGroupUI { Title = $"Rename {group.Name}", Name = group.Name };
-            this.OKButtonCaption = "Save";
+            this.currentName = group.Name;
+            this.ContentData = new RenameGroupUI { Name = group.Name };
+            this.AllowOk = false;
+            this.AllowCancel = true;
         }
-        public override Task OnOkCommand(string providerId, string commandId, string data)
-        {
-            var ui = this.serializer.DeserializeFromString<RenameGroupUI>(data) ?? (RenameGroupUI)this.ContentData;
-            var name = ui.Name?.Trim();
-            if (string.IsNullOrWhiteSpace(name)) return Task.CompletedTask;
-            Plugin.Instance.AdminSettingsStore.MutateAsync(s =>
-            {
-                if (s.Groups.Any(g => g.Id != this.groupId && string.Equals(g.Name, name, StringComparison.OrdinalIgnoreCase))) return;
-                var group = s.Groups.FirstOrDefault(g => g.Id == this.groupId);
-                if (group != null) group.Name = name;
-            }).GetAwaiter().GetResult();
-            return Task.CompletedTask;
-        }
+        public override string Caption => "Rename: " + this.currentName;
+        public override Task OnOkCommand(string providerId, string commandId, string data) => Task.CompletedTask;
 
         public override Task<IPluginUIView> RunCommand(string itemId, string commandId, string data)
         {
-            var ui = this.serializer.DeserializeFromString<RenameGroupUI>(data) ?? (RenameGroupUI)this.ContentData;
-            var name = ui.Name?.Trim();
-            var duplicate = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult().Groups
-                .Any(g => g.Id != this.groupId && string.Equals(g.Name, name, StringComparison.OrdinalIgnoreCase));
-            ui.StatusMessage = string.IsNullOrWhiteSpace(name)
-                ? Recommend.RecommendViewBuilder.BuildStatusMessage("A group name is required.", false)
-                : duplicate
-                    ? Recommend.RecommendViewBuilder.BuildStatusMessage($"A group named '{name}' already exists.", false)
-                    : Recommend.RecommendViewBuilder.BuildStatusMessage("This group name is available.", true);
-            this.ContentData = ui;
-            return Task.FromResult<IPluginUIView>(this);
+            this.logger.Info("RecommendMe: RenameGroupDialog command '{0}' for group '{1}' ({2})", commandId ?? "(null)", this.currentName, this.groupId);
+            if (string.Equals(commandId, GroupsCommands.ConfirmRename, StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var ui = this.serializer.DeserializeFromString<RenameGroupUI>(data) ?? new RenameGroupUI();
+                    var name = ui.Name?.Trim();
+                    if (string.IsNullOrWhiteSpace(name))
+                    {
+                        ui.Name = this.currentName;
+                        ui.ValidationStatus = new CaptionItem("✗ A group name is required");
+                        this.ContentData = ui;
+                        this.RaiseUIViewInfoChanged();
+                        return Task.FromResult<IPluginUIView>(this);
+                    }
+
+                    var renamed = false;
+                    Plugin.Instance.AdminSettingsStore.MutateAsync(s =>
+                    {
+                        if (s.Groups.Any(g => g.Id != this.groupId && string.Equals(g.Name, name, StringComparison.OrdinalIgnoreCase))) return;
+                        var group = s.Groups.FirstOrDefault(g => g.Id == this.groupId);
+                        if (group == null) return;
+                        group.Name = name;
+                        renamed = true;
+                    }).GetAwaiter().GetResult();
+
+                    if (renamed)
+                    {
+                        this.logger.Info("RecommendMe: renamed group '{0}' ({1}) to '{2}'", this.currentName, this.groupId, name);
+                        this.rebuildParentContent();
+                        return Task.FromResult(this.parentPageView);
+                    }
+
+                    this.logger.Info("RecommendMe: rename target '{0}' already exists", name);
+                    ui.ValidationStatus = new CaptionItem($"✗ A group named '{name}' already exists");
+                    this.ContentData = ui;
+                    this.RaiseUIViewInfoChanged();
+                    return Task.FromResult<IPluginUIView>(this);
+                }
+                catch (Exception ex)
+                {
+                    this.logger.ErrorException("RecommendMe: group rename dialog failed", ex);
+                    return Task.FromResult<IPluginUIView>(this);
+                }
+            }
+
+            if (string.Equals(commandId, "DialogCancel", StringComparison.OrdinalIgnoreCase))
+            {
+                this.logger.Info("RecommendMe: group rename cancelled for '{0}' ({1})", this.currentName, this.groupId);
+                this.rebuildParentContent();
+                return Task.FromResult(this.parentPageView);
+            }
+
+            return base.RunCommand(itemId, commandId, data);
         }
+        public override Task Cancel() => Task.CompletedTask;
     }
 
     public class DeleteGroupUI : EditableOptionsBase

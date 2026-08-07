@@ -6,7 +6,7 @@ namespace RecommendMe.UI.Admin
     {
         public const string Refresh = "groups-refresh";
         public const string Create = "groups-create";
-        public const string ValidateRename = "groups-validate-rename";
+        public const string ConfirmRename = "groups-confirm-rename";
         public const string ConfirmDelete = "groups-confirm-delete";
         private const string MembersPrefix = "group-members:";
         private const string RenamePrefix = "group-rename:";

@@ -16,9 +16,15 @@ namespace RecommendMe.UI.Admin
         public string NewGroupName { get; set; } = string.Empty;
         public GenericItemList CreateAction { get; set; } = new GenericItemList
         {
-            new GenericListItem { PrimaryText = "Create", Icon = IconNames.group_add, Button1 = new ButtonItem("Create") { CommandId = GroupsCommands.Create } }
+            new GenericListItem
+            {
+                PrimaryText = "Create",
+                SecondaryText = string.Empty,
+                Icon = IconNames.group_add,
+                Status = ItemStatus.Succeeded,
+                Button1 = new ButtonItem("Create") { CommandId = GroupsCommands.Create }
+            }
         };
-        public GenericItemList StatusMessage { get; set; } = new GenericItemList();
 
         public CaptionItem AvailableHeading { get; set; } = new CaptionItem("Available Groups");
         [DisplayName("Group search")]
