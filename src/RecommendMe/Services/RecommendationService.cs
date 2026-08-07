@@ -14,7 +14,16 @@ namespace RecommendMe.Services
         RecipientBlockedSender,
         RecipientOptedOutMediaType,
         AlreadyWatchedByRecipient,
-        AlreadyActiveRecommendation
+
+        /// <summary>
+        /// The item is currently a member of the recipient's recommendation
+        /// collection (checked live - see
+        /// CollectionSyncService.IsItemInRecipientCollectionAsync). Renamed
+        /// from the old AlreadyActiveRecommendation: that name described a
+        /// check against the JSON history log, which is no longer part of
+        /// this gate at all (see remarks on SendRecommendationAsync).
+        /// </summary>
+        AlreadyInRecipientCollection
     }
 
     /// <summary>
@@ -51,10 +60,21 @@ namespace RecommendMe.Services
 
         /// <summary>
         /// Sends <paramref name="item"/> from <paramref name="sender"/> to
-        /// <paramref name="recipient"/>: checks permission, checks the two
-        /// pre-conditions (not already watched, not already actively
-        /// recommended to them), then persists the record, adds the item to
-        /// the recipient's collection, and fires a session toast.
+        /// <paramref name="recipient"/>.
+        ///
+        /// Submission-time gate (spec, 2026-08-07): all of the following
+        /// must hold, and NONE of them consult the JSON recommendation log -
+        /// that log is write-only history for the History dialog, never a
+        /// gating source. Gating against it was the root cause of recipients
+        /// getting permanently stuck with "already has an active
+        /// recommendation" after manually removing an item from their
+        /// collection outside the watched-cleanup flow, since nothing ever
+        /// resolved the log's Active status in that case:
+        ///   1. Recipient's own preferences currently accept recommendations
+        ///      from this sender, for this media type (PermissionService).
+        ///   2. The item is not currently in the recipient's recommendation
+        ///      collection, checked live (CollectionSyncService).
+        ///   3. The item is not already marked watched for the recipient.
         /// </summary>
         public async Task<RecommendationResult> SendRecommendationAsync(
             User sender,
@@ -63,7 +83,15 @@ namespace RecommendMe.Services
             string mediaType,
             bool isPrivate)
         {
+            this.logger.Debug(
+                "RecommendMe: SendRecommendationAsync - sender={0} ({1}), recipient={2} ({3}), item={4} '{5}' ({6}), private={7}",
+                sender.Name, sender.InternalId,
+                recipient.Name, recipient.InternalId,
+                item.InternalId, item.Name, mediaType,
+                isPrivate);
+
             var permission = await this.permissionService.CanSendAsync(sender, recipient, mediaType).ConfigureAwait(false);
+            this.logger.Debug("RecommendMe: permission check result = {0}", permission);
             switch (permission)
             {
                 case SendPermissionResult.AdminBlocked:
@@ -77,15 +105,23 @@ namespace RecommendMe.Services
             var recipientData = this.userDataManager.GetUserData(recipient, item);
             if (recipientData != null && recipientData.Played)
             {
+                this.logger.Debug(
+                    "RecommendMe: blocked - item {0} already watched by {1}.",
+                    item.InternalId,
+                    recipient.Name);
                 return RecommendationResult.AlreadyWatchedByRecipient;
             }
 
-            var alreadyActive = await this.recommendationStore
-                .HasActiveRecommendationAsync(recipient.InternalId, item.InternalId)
+            var alreadyInCollection = await this.collectionSyncService
+                .IsItemInRecipientCollectionAsync(recipient, item.InternalId)
                 .ConfigureAwait(false);
-            if (alreadyActive)
+            if (alreadyInCollection)
             {
-                return RecommendationResult.AlreadyActiveRecommendation;
+                this.logger.Debug(
+                    "RecommendMe: blocked - item {0} already in {1}'s recommendation collection.",
+                    item.InternalId,
+                    recipient.Name);
+                return RecommendationResult.AlreadyInRecipientCollection;
             }
 
             var record = new RecommendationRecord
@@ -105,6 +141,12 @@ namespace RecommendMe.Services
 
             this.notificationService.NotifyRecommendationReceived(recipient, sender, item.Name, mediaType);
 
+            this.logger.Debug(
+                "RecommendMe: recommendation {0} recorded and item {1} added to {2}'s collection.",
+                record.RecommendationId,
+                item.InternalId,
+                recipient.Name);
+
             return RecommendationResult.Success;
         }
 
@@ -113,6 +155,10 @@ namespace RecommendMe.Services
         /// whenever a user's play state changes. If the item just became
         /// "Played" and it's one of this user's active recommendations,
         /// resolve the record(s) and pull the item out of their collection.
+        /// This still uses the JSON log (unlike the submission gate above) -
+        /// it's the log's one legitimate consumer, since it's the only place
+        /// that knows which sender(s) to eventually show in history as
+        /// "resolved by watching" rather than just vanishing silently.
         /// </summary>
         public async Task HandleItemWatchedAsync(long userId, long itemId, User user)
         {

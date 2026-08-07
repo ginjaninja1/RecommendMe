@@ -1,11 +1,9 @@
-﻿using System.Collections.Generic;
-using System.ComponentModel;
-using System.Linq;
-using Emby.Web.GenericEdit;
-using Emby.Web.GenericEdit.Common;
+﻿using Emby.Web.GenericEdit;
 using Emby.Web.GenericEdit.Elements;
 using Emby.Web.GenericEdit.Elements.DxGrid;
 using MediaBrowser.Model.Attributes;
+using System;
+using System.ComponentModel;
 
 namespace RecommendMe.UI.History
 {
@@ -29,51 +27,33 @@ namespace RecommendMe.UI.History
     }
 
     /// <summary>
-    /// View-model for the Recommendation History dialog. Filters
-    /// (date range / sender) are simple dropdowns that trigger a server-side
-    /// requery via AutoPostBack; the grid itself (search/sort/column-filter)
-    /// is handled entirely client-side by the DxDataGrid over whatever rows
-    /// are currently loaded into DataSource.
+    /// View-model for the Recommendation History dialog. All rows the viewer
+    /// is allowed to see (per privacy/visibility isolation - a security
+    /// boundary, so it stays server-side) are loaded once when the dialog
+    /// opens. Date range / sender / recipient / media-type filtering is
+    /// handled entirely client-side by DxDataGrid's native filter row over
+    /// that row set - there is no server postback filter here to go stale or
+    /// silently drop rows. See HistoryViewBuilder.BuildRowsAsync.
     /// </summary>
     public class HistoryUI : EditableOptionsBase
     {
         public override string EditorTitle => "Recommendation History";
 
         public override string EditorDescription =>
-            "Showing recommendations you can see, based on what the admin has made visible to you.";
+            "Recommendations you can see, based on what the admin has made visible to you. Use the column headers to filter or search.";
 
-        [DisplayName("Time range")]
-        [SelectItemsSource(nameof(DateRangeChoices))]
-        [AutoPostBack(HistoryCommands.Refresh, nameof(SelectedDateRange))]
-        public string SelectedDateRange { get; set; } = HistoryFilters.Last3Months;
-
-        // NOTE: must be List<EditorSelectOption>, not List<string> - see the
-        // matching note on RecommendUI.TargetUserChoices for why a bare
-        // string list renders as unselectable "undefined" entries.
-        [Browsable(false)]
-        public List<EditorSelectOption> DateRangeChoices { get; set; } = ToOptions(HistoryFilters.AllDateRanges);
-
-        [DisplayName("Recommended to")]
-        [SelectItemsSource(nameof(RecipientChoices))]
-        [AutoPostBack(HistoryCommands.Refresh, nameof(SelectedRecipient))]
-        public string SelectedRecipient { get; set; } = HistoryFilters.CurrentUser;
-
-        [Browsable(false)]
-        public List<EditorSelectOption> RecipientChoices { get; set; } = ToOptions(HistoryFilters.AllRecipientFilters);
-
-        [DisplayName("From")]
-        [SelectItemsSource(nameof(SenderChoices))]
-        [AutoPostBack(HistoryCommands.Refresh, nameof(SelectedSender))]
-        public string SelectedSender { get; set; } = HistoryFilters.Anyone;
-
-        [Browsable(false)]
-        public List<EditorSelectOption> SenderChoices { get; set; } = ToOptions(new[] { HistoryFilters.Anyone });
-
-        /// <summary>The actual grid. Columns are static; DataSource is rebuilt on every refresh.</summary>
+        /// <summary>
+        /// The grid. Columns/options are static (HistoryViewBuilder.BuildEmptyGrid);
+        /// row data is NOT read from Grid.Options.dataSource by the editor
+        /// host - it's read from whichever property [GridDataSource] points
+        /// at, i.e. Rows below. Confirmed against the decompiled
+        /// EditorDxGrid/GridDataSourceAttribute and the working pattern in
+        /// ListManagementUI.PlaylistGrid.
+        /// </summary>
+        [GridDataSource(nameof(Rows))]
         public DxDataGrid Grid { get; set; }
 
-        /// <summary>Builds Value==Name option pairs for filter choices where the raw filter constant is also the label.</summary>
-        internal static List<EditorSelectOption> ToOptions(IEnumerable<string> values) =>
-            values.Select(v => new EditorSelectOption(v, v)).ToList();
+        [Browsable(false)]
+        public HistoryRow[] Rows { get; set; } = Array.Empty<HistoryRow>();
     }
 }

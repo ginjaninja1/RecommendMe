@@ -98,6 +98,13 @@ namespace RecommendMe.Services
             // BaseItem.AddCollection dedupes by linked-item id, so this is a
             // no-op in that case rather than a duplicate entry.
             await this.collectionManager.AddToCollection(collection.InternalId, new[] { item.InternalId }).ConfigureAwait(false);
+
+            this.logger.Debug(
+                "RecommendMe: added item {0} to collection {1} ({2}) for {3}.",
+                item.InternalId,
+                collection.InternalId,
+                collection.Name,
+                recipient.Name);
         }
 
         public async Task RemoveItemAsync(User recipient, long itemId)
@@ -115,6 +122,46 @@ namespace RecommendMe.Services
             }
 
             this.collectionManager.RemoveFromCollection(collection, new[] { itemId });
+        }
+
+        /// <summary>
+        /// True if <paramref name="itemId"/> is currently a member of
+        /// <paramref name="recipient"/>'s recommendation collection, checked
+        /// directly against the live collection (not against the JSON
+        /// recommendation log, which can go stale - e.g. if the user
+        /// manually removes the item from the collection outside the
+        /// watched-cleanup flow). This is the sole source of truth for the
+        /// "already recommended" submission-time gate; see
+        /// RecommendationService.SendRecommendationAsync.
+        /// </summary>
+        public async Task<bool> IsItemInRecipientCollectionAsync(User recipient, long itemId)
+        {
+            var collectionId = await this.registryStore.GetCollectionIdAsync(recipient.InternalId).ConfigureAwait(false);
+            if (!collectionId.HasValue)
+            {
+                this.logger.Debug(
+                    "RecommendMe: {0} has no recommendation collection yet; item {1} cannot be a member.",
+                    recipient.Name,
+                    itemId);
+                return false;
+            }
+
+            var matchingIds = this.libraryManager.GetInternalItemIds(new MediaBrowser.Controller.Entities.InternalItemsQuery
+            {
+                CollectionIds = new[] { collectionId.Value },
+                ItemIds = new[] { itemId }
+            });
+
+            var isMember = matchingIds.Length > 0;
+
+            this.logger.Debug(
+                "RecommendMe: membership check - item {0} in {1}'s collection {2}: {3}.",
+                itemId,
+                recipient.Name,
+                collectionId.Value,
+                isMember);
+
+            return isMember;
         }
     }
 }

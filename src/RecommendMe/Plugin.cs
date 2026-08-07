@@ -105,6 +105,9 @@ namespace RecommendMe
 
         public ILibraryManager LibraryManager { get; }
 
+        /// <summary>Exposed for UI-layer code (e.g. HistoryViewBuilder) that isn't DI-constructed and has no other route to the plugin's logger.</summary>
+        public ILogger Logger => this.logger;
+
         /// <summary>
         /// Convenience wrapper around the non-obsolete GetUserList(UserQuery)
         /// API - IUserManager.Users itself is obsolete (flagged for "avoid

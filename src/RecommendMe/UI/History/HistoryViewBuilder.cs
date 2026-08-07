@@ -1,10 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Emby.Web.GenericEdit.Elements;
+﻿using Emby.Web.GenericEdit.Elements;
 using Emby.Web.GenericEdit.Elements.DxGrid;
 using MediaBrowser.Controller.Entities;
+using System;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace RecommendMe.UI.History
 {
@@ -37,25 +36,24 @@ namespace RecommendMe.UI.History
         }
 
         /// <summary>
-        /// Loads, filters (date range / recipient / sender / visibility /
-        /// privacy), and projects recommendation records into grid rows for
-        /// the given viewing user.
+        /// Loads every recommendation record visible to <paramref name="viewer"/>
+        /// (privacy isolation + sender-visibility isolation - the only
+        /// server-side filtering left; see remarks below) and projects them
+        /// into grid rows. Date/sender/recipient/media-type narrowing is left
+        /// entirely to DxDataGrid's own filter row on the client.
         /// </summary>
-        public static async Task<object[]> BuildRowsAsync(User viewer, string dateRangeFilter, string recipientFilter, string senderFilter)
+        public static async Task<HistoryRow[]> BuildRowsAsync(User viewer)
         {
             var plugin = Plugin.Instance;
             var all = await plugin.RecommendationStore.GetAllAsync().ConfigureAwait(false);
             var adminSettings = await plugin.AdminSettingsStore.GetAsync().ConfigureAwait(false);
 
-            var cutoff = DateRangeToCutoffUtc(dateRangeFilter);
+            plugin.Logger.Debug(
+                "RecommendMe: History - viewer={0} ({1}), total records={2}",
+                viewer.Name, viewer.InternalId, all.Count);
 
             var visible = all.Where(r =>
             {
-                if (cutoff.HasValue && r.DateSentUtc < cutoff.Value)
-                {
-                    return false;
-                }
-
                 var isSender = r.SentByUserId == viewer.InternalId;
                 var isRecipient = r.SentToUserId == viewer.InternalId;
 
@@ -82,22 +80,16 @@ namespace RecommendMe.UI.History
                     }
                 }
 
-                if (recipientFilter == HistoryFilters.CurrentUser && !isRecipient)
-                {
-                    return false;
-                }
-
-                if (senderFilter != HistoryFilters.Anyone && !string.Equals(r.SentByUserName, senderFilter, StringComparison.OrdinalIgnoreCase))
-                {
-                    return false;
-                }
-
                 return true;
-            });
+            }).ToList();
+
+            plugin.Logger.Debug(
+                "RecommendMe: History - viewer={0}, records visible after privacy/visibility isolation={1}",
+                viewer.Name, visible.Count);
 
             return visible
                 .OrderByDescending(r => r.DateSentUtc)
-                .Select(r => (object)new HistoryRow
+                .Select(r => new HistoryRow
                 {
                     MediaType = r.MediaType,
                     Name = r.ItemName,
@@ -107,17 +99,6 @@ namespace RecommendMe.UI.History
                     Private = r.IsPrivate ? "Y" : "N"
                 })
                 .ToArray();
-        }
-
-        private static DateTime? DateRangeToCutoffUtc(string dateRangeFilter)
-        {
-            switch (dateRangeFilter)
-            {
-                case HistoryFilters.Last1Month: return DateTime.UtcNow.AddMonths(-1);
-                case HistoryFilters.Last3Months: return DateTime.UtcNow.AddMonths(-3);
-                case HistoryFilters.Last6Months: return DateTime.UtcNow.AddMonths(-6);
-                default: return null;
-            }
         }
     }
 }

@@ -162,7 +162,7 @@ namespace RecommendMe.UI.Recommend
                     RecommendationResult.RecipientBlockedSender => RecommendViewBuilder.BuildStatusMessage($"Recommendation dropped - {targetUser.Name} is not accepting recommendations from you.", false),
                     RecommendationResult.RecipientOptedOutMediaType => RecommendViewBuilder.BuildStatusMessage($"Recommendation dropped - {targetUser.Name} is not accepting {mediaType} recommendations from you.", false),
                     RecommendationResult.AlreadyWatchedByRecipient => RecommendViewBuilder.BuildStatusMessage($"{targetUser.Name} has already watched this.", false),
-                    RecommendationResult.AlreadyActiveRecommendation => RecommendViewBuilder.BuildStatusMessage($"{targetUser.Name} already has an active recommendation for this item.", false),
+                    RecommendationResult.AlreadyInRecipientCollection => RecommendViewBuilder.BuildStatusMessage($"{targetUser.Name} already has this item in their recommendation collection.", false),
                     _ => RecommendViewBuilder.BuildStatusMessage("Something went wrong.", false)
                 };
             }
