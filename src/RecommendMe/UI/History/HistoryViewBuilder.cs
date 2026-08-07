@@ -30,7 +30,7 @@ namespace RecommendMe.UI.History
 
         /// <summary>
         /// Loads every recommendation record visible to <paramref name="viewer"/>
-        /// (privacy isolation + sender-visibility isolation - the only
+        /// (privacy isolation + viewer-scope isolation - the only
         /// server-side filtering left; see remarks below) and projects them
         /// into grid rows. Date/sender/recipient/media-type narrowing is left
         /// entirely to DxDataGrid's own filter row on the client.
@@ -39,7 +39,9 @@ namespace RecommendMe.UI.History
         {
             var plugin = Plugin.Instance;
             var all = await plugin.RecommendationStore.GetAllAsync().ConfigureAwait(false);
+            await plugin.PermissionService.EnsureUserAccessEntryAsync(viewer).ConfigureAwait(false);
             var adminSettings = await plugin.AdminSettingsStore.GetAsync().ConfigureAwait(false);
+            var viewerEntry = adminSettings.UserAccess.First(u => u.UserId == viewer.InternalId);
 
             plugin.Logger.Debug(
                 "RecommendMe: History - viewer={0} ({1}), total records={2}",
@@ -56,18 +58,24 @@ namespace RecommendMe.UI.History
                     return false;
                 }
 
-                // Visibility isolation: for non-private records the viewer must be
-                // the sender/recipient, or the OTHER party's send permission must
-                // currently cover that recipient (approximated here via the same
-                // send-policy check used for real permission enforcement).
+                // Visibility isolation: a viewer always retains access to records
+                // they sent or received. For any other non-private record, their
+                // current admin send scope must include both participants. This
+                // deliberately uses only the admin matrix: recipient opt-outs are
+                // about accepting recommendations, not history visibility.
                 if (!isSender && !isRecipient)
                 {
                     var senderEntry = adminSettings.UserAccess.FirstOrDefault(u => u.UserId == r.SentByUserId);
-                    var otherPartyIsVisible = senderEntry != null
+                    var recipientEntry = adminSettings.UserAccess.FirstOrDefault(u => u.UserId == r.SentToUserId);
+                    var bothPartiesAreVisible = !viewerEntry.AccessSuspended
+                        && senderEntry != null
                         && !senderEntry.AccessSuspended
-                        && Services.PermissionService.IsTargetAllowed(senderEntry, r.SentToUserId, adminSettings);
+                        && recipientEntry != null
+                        && !recipientEntry.AccessSuspended
+                        && Services.PermissionService.IsTargetAllowed(viewerEntry, r.SentByUserId, adminSettings)
+                        && Services.PermissionService.IsTargetAllowed(viewerEntry, r.SentToUserId, adminSettings);
 
-                    if (!otherPartyIsVisible)
+                    if (!bothPartiesAreVisible)
                     {
                         return false;
                     }
