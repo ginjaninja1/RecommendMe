@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 using Emby.Web.GenericEdit.Elements;
 using Emby.Web.GenericEdit.Elements.List;
 using MediaBrowser.Controller.Entities;
-using RecommendMe.Models;
 using RecommendMe.Services;
 
 namespace RecommendMe.UI.Recommend
@@ -21,9 +20,15 @@ namespace RecommendMe.UI.Recommend
         public static async Task<List<string>> BuildTargetUserChoicesAsync(User currentUser)
         {
             var plugin = Plugin.Instance;
-            var settings = await plugin.AdminSettingsStore.GetAsync().ConfigureAwait(false);
 
             var choices = new List<string> { currentUser.Name + " (yourself)" };
+
+            var currentUserEntry = await plugin.PermissionService.EnsureUserAccessEntryAsync(currentUser).ConfigureAwait(false);
+            if (currentUserEntry.AccessSuspended)
+            {
+                // Suspended users can still recommend to themselves, but not to anyone else.
+                return choices;
+            }
 
             foreach (var candidate in plugin.GetAllUsers())
             {
@@ -32,10 +37,13 @@ namespace RecommendMe.UI.Recommend
                     continue;
                 }
 
-                var inReceiveScope = settings.ReceiveScope == AccessScope.AllUsers
-                    || settings.ReceiveScopeUserIds.Contains(candidate.InternalId);
+                var candidateEntry = await plugin.PermissionService.EnsureUserAccessEntryAsync(candidate).ConfigureAwait(false);
+                if (candidateEntry.AccessSuspended)
+                {
+                    continue;
+                }
 
-                if (inReceiveScope)
+                if (PermissionService.IsTargetAllowed(currentUserEntry, candidate.InternalId))
                 {
                     choices.Add(candidate.Name);
                 }

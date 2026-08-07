@@ -3,15 +3,6 @@
 namespace RecommendMe.Models
 {
     /// <summary>
-    /// Who a global permission applies to.
-    /// </summary>
-    public enum AccessScope
-    {
-        AllUsers,
-        SpecificUsers
-    }
-
-    /// <summary>
     /// The set of Emby item kinds this plugin knows how to recommend.
     /// Kept as plain strings (matching MediaBrowser.Model.Entities.BaseItemKind
     /// names) rather than a hard dependency on the enum, so the JSON on disk
@@ -35,27 +26,27 @@ namespace RecommendMe.Models
     }
 
     /// <summary>
-    /// The template of permissions applied to a user the plugin has never
-    /// seen before (i.e. no <see cref="UserAccessEntry"/> exists for them yet).
-    /// Whenever a brand-new user is first evaluated, a UserAccessEntry is
-    /// materialized for them from this template so admins can subsequently
-    /// fine-tune it per-user.
+    /// Who a user is allowed to send recommendations to. This is the entire
+    /// access model - there is no separate "receive scope": if A's SendMode
+    /// permits sending to B, B necessarily receives from A. See
+    /// <see cref="Services.PermissionService"/> for evaluation order.
     /// </summary>
-    public class DefaultUserProfile
+    public enum SendMode
     {
-        public bool AllowSending { get; set; } = true;
-
-        public bool AllowReceiving { get; set; } = true;
-
-        public List<string> AllowedMediaTypes { get; set; } = new List<string>(RecommendableMediaTypes.All);
+        Everyone,
+        NoOne,
+        SpecificUsers
     }
 
     /// <summary>
-    /// Per-user override of the global permission matrix. Every user that has
-    /// ever been evaluated by <see cref="Services.PermissionService"/> has one
-    /// of these. "Emergency Revocation" is just AllowSending/AllowReceiving
-    /// both set to false without touching anything else, so restoring access
-    /// later doesn't lose the user's configured media type list.
+    /// Per-user access record. Every user the plugin has ever evaluated has
+    /// exactly one of these, materialized from <see cref="AdminSettings.NewUserDefaultSendMode"/>
+    /// the first time they're seen (see <see cref="Services.PermissionService.EnsureUserAccessEntryAsync"/>).
+    ///
+    /// <see cref="AccessSuspended"/> is the Emergency Revocation switch: it
+    /// blocks this user from sending OR receiving, without touching their
+    /// configured SendMode/AllowedTargetUserIds, so un-revoking restores
+    /// exactly what was there before.
     /// </summary>
     public class UserAccessEntry
     {
@@ -63,11 +54,13 @@ namespace RecommendMe.Models
 
         public string UserName { get; set; }
 
-        public bool AllowSending { get; set; } = true;
+        public SendMode SendMode { get; set; } = SendMode.Everyone;
 
-        public bool AllowReceiving { get; set; } = true;
+        /// <summary>Target user ids this user may recommend to, when SendMode == SpecificUsers.</summary>
+        public List<long> AllowedTargetUserIds { get; set; } = new List<long>();
 
-        public List<string> AllowedMediaTypes { get; set; } = new List<string>(RecommendableMediaTypes.All);
+        /// <summary>Emergency Revocation: true blocks all sending and receiving for this user.</summary>
+        public bool AccessSuspended { get; set; } = false;
     }
 
     /// <summary>
@@ -79,22 +72,32 @@ namespace RecommendMe.Models
     /// </summary>
     public class AdminSettings
     {
-        /// <summary>Global rule for who is allowed to send recommendations at all.</summary>
-        public AccessScope SendScope { get; set; } = AccessScope.AllUsers;
-
-        /// <summary>User ids allowed to send, when SendScope == SpecificUsers.</summary>
-        public List<long> SendScopeUserIds { get; set; } = new List<long>();
-
-        /// <summary>Global rule for who is allowed to receive recommendations at all.</summary>
-        public AccessScope ReceiveScope { get; set; } = AccessScope.AllUsers;
-
-        /// <summary>User ids allowed to receive, when ReceiveScope == SpecificUsers.</summary>
-        public List<long> ReceiveScopeUserIds { get; set; } = new List<long>();
-
-        /// <summary>Media types recommendable at all, server-wide. Per-user AllowedMediaTypes is intersected with this.</summary>
+        /// <summary>
+        /// Server-wide media types the Recommend UI is allowed to offer at all.
+        /// This is NOT a per-user access control - it exists purely so the
+        /// recommend picker doesn't let a user pick an Emby item type that
+        /// can't actually be added to a Collection (or that the admin has
+        /// otherwise decided not to support). Every user sees the same list.
+        /// </summary>
         public List<string> GloballyAllowedMediaTypes { get; set; } = new List<string>(RecommendableMediaTypes.All);
 
-        public DefaultUserProfile DefaultProfile { get; set; } = new DefaultUserProfile();
+        /// <summary>
+        /// SendMode a brand-new user's UserAccessEntry is created with.
+        /// Only Everyone or NoOne are meaningful defaults here - the admin UI
+        /// does not offer SpecificUsers for this setting, since a new user
+        /// has no target list to speak of yet.
+        /// </summary>
+        public SendMode NewUserDefaultSendMode { get; set; } = SendMode.Everyone;
+
+        /// <summary>
+        /// When a new user is first seen, should they automatically be added
+        /// to every existing SpecificUsers-mode user's AllowedTargetUserIds?
+        /// True = new users are auto-included as a valid recommend target for
+        /// everyone already using SpecificUsers mode. False = existing users'
+        /// named lists are left untouched and the admin must add the new user
+        /// manually if desired.
+        /// </summary>
+        public bool AutoGrantNewUsersToExistingSendLists { get; set; } = true;
 
         public List<UserAccessEntry> UserAccess { get; set; } = new List<UserAccessEntry>();
     }

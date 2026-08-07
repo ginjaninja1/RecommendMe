@@ -3,7 +3,7 @@ using System.Threading.Tasks;
 using Emby.Web.GenericEdit.Elements;
 using Emby.Web.GenericEdit.Elements.List;
 using MediaBrowser.Controller.Entities;
-using RecommendMe.Models;
+using RecommendMe.Services;
 
 namespace RecommendMe.UI.Account
 {
@@ -11,9 +11,9 @@ namespace RecommendMe.UI.Account
     {
         /// <summary>
         /// Builds the sender list for <paramref name="viewer"/>: every other
-        /// user the admin's global scope currently permits as a sender to
-        /// this viewer, each with an opt-out toggle per media type. This
-        /// narrows the admin matrix - it never grants anything the admin
+        /// user whose SendMode currently permits sending to this viewer, each
+        /// with an opt-out toggle per server-wide media type. This narrows the
+        /// admin-configured access model - it never grants anything the admin
         /// hasn't already allowed, matching PermissionService's rule.
         /// </summary>
         public static async Task<AccountUI> BuildAsync(User viewer)
@@ -22,23 +22,16 @@ namespace RecommendMe.UI.Account
             var settings = await plugin.AdminSettingsStore.GetAsync().ConfigureAwait(false);
             var preferences = await plugin.UserPreferenceStore.GetForUserAsync(viewer.InternalId).ConfigureAwait(false);
 
-            var viewerEntry = settings.UserAccess.FirstOrDefault(u => u.UserId == viewer.InternalId);
-            var viewerAllowedTypes = viewerEntry?.AllowedMediaTypes ?? RecommendableMediaTypes.All.ToList();
+            var viewerEntry = await plugin.PermissionService.EnsureUserAccessEntryAsync(viewer).ConfigureAwait(false);
 
             var senderList = new GenericItemList();
 
-            var receiveOk = settings.ReceiveScope == AccessScope.AllUsers
-                || settings.ReceiveScopeUserIds.Contains(viewer.InternalId);
-
-            if (receiveOk && (viewerEntry?.AllowReceiving ?? true))
+            if (!viewerEntry.AccessSuspended)
             {
                 foreach (var candidate in plugin.GetAllUsers().Where(u => u.InternalId != viewer.InternalId).OrderBy(u => u.Name))
                 {
-                    var sendOk = settings.SendScope == AccessScope.AllUsers
-                        || settings.SendScopeUserIds.Contains(candidate.InternalId);
-
-                    var candidateEntry = settings.UserAccess.FirstOrDefault(u => u.UserId == candidate.InternalId);
-                    if (!sendOk || candidateEntry == null || !candidateEntry.AllowSending)
+                    var candidateEntry = await plugin.PermissionService.EnsureUserAccessEntryAsync(candidate).ConfigureAwait(false);
+                    if (candidateEntry.AccessSuspended || !PermissionService.IsTargetAllowed(candidateEntry, viewer.InternalId))
                     {
                         continue;
                     }
@@ -47,7 +40,7 @@ namespace RecommendMe.UI.Account
                     var optedOut = existingPref?.OptedOutMediaTypes ?? new System.Collections.Generic.List<string>();
 
                     var subItems = new GenericItemList();
-                    foreach (var mediaType in candidateEntry.AllowedMediaTypes.Intersect(viewerAllowedTypes))
+                    foreach (var mediaType in settings.GloballyAllowedMediaTypes)
                     {
                         var isOptedIn = !optedOut.Contains(mediaType);
                         subItems.Add(new GenericListItem

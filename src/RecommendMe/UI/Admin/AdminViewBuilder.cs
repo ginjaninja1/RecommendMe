@@ -11,81 +11,17 @@ namespace RecommendMe.UI.Admin
     {
         public static AdminSettingsUI Build(AdminSettings settings, IReadOnlyList<User> allUsers)
         {
-            var ui = new AdminSettingsUI
+            return new AdminSettingsUI
             {
-                SendScopeList = BuildScopeList(
-                    "Who can send recommendations",
-                    settings.SendScope,
-                    settings.SendScopeUserIds,
-                    allUsers,
-                    AdminCommands.BuildSendScopeModeToggle(),
-                    AdminCommands.BuildSendScopeUserToggle),
+                MediaTypeList = BuildMediaTypeList(settings.GloballyAllowedMediaTypes),
 
-                ReceiveScopeList = BuildScopeList(
-                    "Who can receive recommendations",
-                    settings.ReceiveScope,
-                    settings.ReceiveScopeUserIds,
-                    allUsers,
-                    AdminCommands.BuildReceiveScopeModeToggle(),
-                    AdminCommands.BuildReceiveScopeUserToggle),
+                NewUserDefaultsList = BuildNewUserDefaultsList(settings),
 
-                MediaTypeList = BuildMediaTypeList(settings.GloballyAllowedMediaTypes, AdminCommands.BuildMediaTypeToggle),
-
-                DefaultProfileList = BuildDefaultProfileList(settings.DefaultProfile),
-
-                UserAccessList = BuildUserAccessList(settings)
+                UserAccessList = BuildUserAccessList(settings, allUsers)
             };
-
-            return ui;
         }
 
-        private static GenericItemList BuildScopeList(
-            string title,
-            AccessScope scope,
-            List<long> scopeUserIds,
-            IReadOnlyList<User> allUsers,
-            string modeCommandId,
-            System.Func<long, string> buildUserCommandId)
-        {
-            var list = new GenericItemList();
-
-            var modeItem = new GenericListItem
-            {
-                PrimaryText = title,
-                SecondaryText = scope == AccessScope.AllUsers ? "All Users" : "Specific Named Users (see below)",
-                Status = ItemStatus.Succeeded,
-                Toggle = new ToggleButtonItem("Restrict to specific users")
-                {
-                    IsChecked = scope == AccessScope.SpecificUsers,
-                    CommandId = modeCommandId
-                }
-            };
-
-            if (scope == AccessScope.SpecificUsers)
-            {
-                var subItems = new GenericItemList();
-                foreach (var user in allUsers.OrderBy(u => u.Name))
-                {
-                    subItems.Add(new GenericListItem
-                    {
-                        PrimaryText = user.Name,
-                        Status = scopeUserIds.Contains(user.InternalId) ? ItemStatus.Succeeded : ItemStatus.Unavailable,
-                        Toggle = new ToggleButtonItem("Included")
-                        {
-                            IsChecked = scopeUserIds.Contains(user.InternalId),
-                            CommandId = buildUserCommandId(user.InternalId)
-                        }
-                    });
-                }
-
-                modeItem.SubItems = subItems;
-            }
-
-            list.Add(modeItem);
-            return list;
-        }
-
-        private static GenericItemList BuildMediaTypeList(List<string> allowed, System.Func<string, string> buildCommandId)
+        private static GenericItemList BuildMediaTypeList(List<string> allowed)
         {
             var list = new GenericItemList();
 
@@ -98,7 +34,7 @@ namespace RecommendMe.UI.Admin
                     Toggle = new ToggleButtonItem("Allowed")
                     {
                         IsChecked = allowed.Contains(mediaType),
-                        CommandId = buildCommandId(mediaType)
+                        CommandId = AdminCommands.BuildMediaTypeToggle(mediaType)
                     }
                 });
             }
@@ -106,42 +42,42 @@ namespace RecommendMe.UI.Admin
             return list;
         }
 
-        private static GenericItemList BuildDefaultProfileList(DefaultUserProfile defaultProfile)
+        private static GenericItemList BuildNewUserDefaultsList(AdminSettings settings)
         {
-            var list = new GenericItemList
+            var newUsersCanSendToEveryone = settings.NewUserDefaultSendMode == SendMode.Everyone;
+
+            return new GenericItemList
             {
                 new GenericListItem
                 {
-                    PrimaryText = "Allow sending (new users)",
-                    Status = defaultProfile.AllowSending ? ItemStatus.Succeeded : ItemStatus.Unavailable,
-                    Toggle = new ToggleButtonItem("Allowed") { IsChecked = defaultProfile.AllowSending, CommandId = "defaultsending" }
+                    PrimaryText = "New users can send to everyone by default",
+                    SecondaryText = newUsersCanSendToEveryone
+                        ? "Everyone"
+                        : "No One (admin must grant recipients manually)",
+                    Status = newUsersCanSendToEveryone ? ItemStatus.Succeeded : ItemStatus.Unavailable,
+                    Toggle = new ToggleButtonItem("Everyone")
+                    {
+                        IsChecked = newUsersCanSendToEveryone,
+                        CommandId = AdminCommands.BuildNewUserDefaultSendModeToggle()
+                    }
                 },
                 new GenericListItem
                 {
-                    PrimaryText = "Allow receiving (new users)",
-                    Status = defaultProfile.AllowReceiving ? ItemStatus.Succeeded : ItemStatus.Unavailable,
-                    Toggle = new ToggleButtonItem("Allowed") { IsChecked = defaultProfile.AllowReceiving, CommandId = "defaultreceiving" }
-                }
-            };
-
-            foreach (var mediaType in RecommendableMediaTypes.All)
-            {
-                list.Add(new GenericListItem
-                {
-                    PrimaryText = $"  {mediaType}",
-                    Status = defaultProfile.AllowedMediaTypes.Contains(mediaType) ? ItemStatus.Succeeded : ItemStatus.Unavailable,
+                    PrimaryText = "Auto-add new users to existing users' allow-lists",
+                    SecondaryText = settings.AutoGrantNewUsersToExistingSendLists
+                        ? "New users are added as an allowed recipient for everyone using a named list"
+                        : "Existing named lists are left untouched - admin adds new users manually",
+                    Status = settings.AutoGrantNewUsersToExistingSendLists ? ItemStatus.Succeeded : ItemStatus.Unavailable,
                     Toggle = new ToggleButtonItem("Allowed")
                     {
-                        IsChecked = defaultProfile.AllowedMediaTypes.Contains(mediaType),
-                        CommandId = AdminCommands.BuildDefaultMediaTypeToggle(mediaType)
+                        IsChecked = settings.AutoGrantNewUsersToExistingSendLists,
+                        CommandId = AdminCommands.BuildAutoGrantToggle()
                     }
-                });
-            }
-
-            return list;
+                }
+            };
         }
 
-        private static GenericItemList BuildUserAccessList(AdminSettings settings)
+        private static GenericItemList BuildUserAccessList(AdminSettings settings, IReadOnlyList<User> allUsers)
         {
             var list = new GenericItemList();
 
@@ -151,52 +87,77 @@ namespace RecommendMe.UI.Admin
                 {
                     new GenericListItem
                     {
-                        PrimaryText = "Can Send",
-                        Status = entry.AllowSending ? ItemStatus.Succeeded : ItemStatus.Unavailable,
-                        Toggle = new ToggleButtonItem("Allowed")
+                        PrimaryText = "Access suspended (Emergency Revocation)",
+                        SecondaryText = entry.AccessSuspended
+                            ? "Blocked from sending and receiving"
+                            : "Not suspended",
+                        Status = entry.AccessSuspended ? ItemStatus.Failed : ItemStatus.Succeeded,
+                        Toggle = new ToggleButtonItem("Suspended")
                         {
-                            IsChecked = entry.AllowSending,
-                            CommandId = AdminCommands.BuildUserSendingToggle(entry.UserId)
-                        }
-                    },
-                    new GenericListItem
-                    {
-                        PrimaryText = "Can Receive",
-                        Status = entry.AllowReceiving ? ItemStatus.Succeeded : ItemStatus.Unavailable,
-                        Toggle = new ToggleButtonItem("Allowed")
-                        {
-                            IsChecked = entry.AllowReceiving,
-                            CommandId = AdminCommands.BuildUserReceivingToggle(entry.UserId)
+                            IsChecked = entry.AccessSuspended,
+                            CommandId = AdminCommands.BuildUserSuspendedToggle(entry.UserId)
                         }
                     }
                 };
 
-                foreach (var mediaType in RecommendableMediaTypes.All)
+                if (entry.SendMode == SendMode.SpecificUsers)
                 {
-                    subItems.Add(new GenericListItem
+                    foreach (var target in allUsers.Where(u => u.InternalId != entry.UserId).OrderBy(u => u.Name))
                     {
-                        PrimaryText = $"  {mediaType}",
-                        Status = entry.AllowedMediaTypes.Contains(mediaType) ? ItemStatus.Succeeded : ItemStatus.Unavailable,
-                        Toggle = new ToggleButtonItem("Allowed")
+                        var included = entry.AllowedTargetUserIds.Contains(target.InternalId);
+                        subItems.Add(new GenericListItem
                         {
-                            IsChecked = entry.AllowedMediaTypes.Contains(mediaType),
-                            CommandId = AdminCommands.BuildUserMediaTypeToggle(entry.UserId, mediaType)
-                        }
-                    });
+                            PrimaryText = $"  Can send to: {target.Name}",
+                            Status = included ? ItemStatus.Succeeded : ItemStatus.Unavailable,
+                            Toggle = new ToggleButtonItem("Included")
+                            {
+                                IsChecked = included,
+                                CommandId = AdminCommands.BuildUserTargetToggle(entry.UserId, target.InternalId)
+                            }
+                        });
+                    }
                 }
-
-                var revoked = !entry.AllowSending && !entry.AllowReceiving;
 
                 list.Add(new GenericListItem
                 {
                     PrimaryText = entry.UserName,
-                    SecondaryText = revoked ? "Access revoked" : null,
-                    Status = revoked ? ItemStatus.Failed : ItemStatus.Succeeded,
+                    SecondaryText = DescribeSendMode(entry),
+                    Status = entry.AccessSuspended ? ItemStatus.Failed : ItemStatus.Succeeded,
+                    Button1 = BuildSendModeButton(entry),
                     SubItems = subItems
                 });
             }
 
             return list;
+        }
+
+        private static string DescribeSendMode(UserAccessEntry entry)
+        {
+            switch (entry.SendMode)
+            {
+                case SendMode.Everyone:
+                    return "Can send to: Everyone";
+                case SendMode.NoOne:
+                    return "Can send to: No One";
+                case SendMode.SpecificUsers:
+                    return $"Can send to: {entry.AllowedTargetUserIds.Count} named user(s) - see below";
+                default:
+                    return null;
+            }
+        }
+
+        private static ButtonItem BuildSendModeButton(UserAccessEntry entry)
+        {
+            return new ButtonItem
+            {
+                Caption = "Change Send Mode",
+                SubMenuButtons = new List<ButtonItem>
+                {
+                    new ButtonItem("Everyone") { CommandId = AdminCommands.BuildUserSendModeCommand(entry.UserId, SendMode.Everyone) },
+                    new ButtonItem("No One") { CommandId = AdminCommands.BuildUserSendModeCommand(entry.UserId, SendMode.NoOne) },
+                    new ButtonItem("Specific Users") { CommandId = AdminCommands.BuildUserSendModeCommand(entry.UserId, SendMode.SpecificUsers) }
+                }
+            };
         }
     }
 }

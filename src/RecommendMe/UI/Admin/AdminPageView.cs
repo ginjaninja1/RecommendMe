@@ -5,12 +5,13 @@ using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Logging;
 using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Plugins.UI.Views;
+using RecommendMe.Models;
 using RecommendMe.UIBaseClasses.Views;
 
 namespace RecommendMe.UI.Admin
 {
     /// <summary>
-    /// Admin permission-matrix page. Every toggle is its own instantly-saved
+    /// Admin permissions page. Every toggle/button is its own instantly-saved
     /// command (mirroring the library/path toggles on the original template's
     /// ConfigPageView) rather than a batch "Save" - so admins see the effect
     /// of each change immediately and there is no unsaved-changes state to lose.
@@ -48,78 +49,52 @@ namespace RecommendMe.UI.Admin
         {
             var mutated = true;
 
-            if (AdminCommands.IsSendScopeModeToggle(commandId))
-            {
-                Plugin.Instance.AdminSettingsStore.MutateAsync(s =>
-                    s.SendScope = s.SendScope == Models.AccessScope.AllUsers ? Models.AccessScope.SpecificUsers : Models.AccessScope.AllUsers)
-                    .GetAwaiter().GetResult();
-            }
-            else if (AdminCommands.IsReceiveScopeModeToggle(commandId))
-            {
-                Plugin.Instance.AdminSettingsStore.MutateAsync(s =>
-                    s.ReceiveScope = s.ReceiveScope == Models.AccessScope.AllUsers ? Models.AccessScope.SpecificUsers : Models.AccessScope.AllUsers)
-                    .GetAwaiter().GetResult();
-            }
-            else if (AdminCommands.TryParseSendScopeUser(commandId, out var sendScopeUserId))
-            {
-                Plugin.Instance.AdminSettingsStore.MutateAsync(s => ToggleListMembership(s.SendScopeUserIds, sendScopeUserId))
-                    .GetAwaiter().GetResult();
-            }
-            else if (AdminCommands.TryParseReceiveScopeUser(commandId, out var receiveScopeUserId))
-            {
-                Plugin.Instance.AdminSettingsStore.MutateAsync(s => ToggleListMembership(s.ReceiveScopeUserIds, receiveScopeUserId))
-                    .GetAwaiter().GetResult();
-            }
-            else if (AdminCommands.TryParseMediaType(commandId, out var mediaType))
+            if (AdminCommands.TryParseMediaType(commandId, out var mediaType))
             {
                 Plugin.Instance.AdminSettingsStore.MutateAsync(s => ToggleListMembership(s.GloballyAllowedMediaTypes, mediaType))
                     .GetAwaiter().GetResult();
             }
-            else if (AdminCommands.IsDefaultSendingToggle(commandId))
+            else if (AdminCommands.IsNewUserDefaultSendModeToggle(commandId))
             {
-                Plugin.Instance.AdminSettingsStore.MutateAsync(s => s.DefaultProfile.AllowSending = !s.DefaultProfile.AllowSending)
+                Plugin.Instance.AdminSettingsStore.MutateAsync(s =>
+                    s.NewUserDefaultSendMode = s.NewUserDefaultSendMode == SendMode.Everyone ? SendMode.NoOne : SendMode.Everyone)
                     .GetAwaiter().GetResult();
             }
-            else if (AdminCommands.IsDefaultReceivingToggle(commandId))
+            else if (AdminCommands.IsAutoGrantToggle(commandId))
             {
-                Plugin.Instance.AdminSettingsStore.MutateAsync(s => s.DefaultProfile.AllowReceiving = !s.DefaultProfile.AllowReceiving)
+                Plugin.Instance.AdminSettingsStore.MutateAsync(s => s.AutoGrantNewUsersToExistingSendLists = !s.AutoGrantNewUsersToExistingSendLists)
                     .GetAwaiter().GetResult();
             }
-            else if (AdminCommands.TryParseDefaultMediaType(commandId, out var defaultMediaType))
-            {
-                Plugin.Instance.AdminSettingsStore.MutateAsync(s => ToggleListMembership(s.DefaultProfile.AllowedMediaTypes, defaultMediaType))
-                    .GetAwaiter().GetResult();
-            }
-            else if (AdminCommands.TryParseUserSending(commandId, out var sendingUserId))
+            else if (AdminCommands.TryParseUserSuspended(commandId, out var suspendedUserId))
             {
                 Plugin.Instance.AdminSettingsStore.MutateAsync(s =>
                 {
-                    var entry = s.UserAccess.FirstOrDefault(u => u.UserId == sendingUserId);
+                    var entry = s.UserAccess.FirstOrDefault(u => u.UserId == suspendedUserId);
                     if (entry != null)
                     {
-                        entry.AllowSending = !entry.AllowSending;
+                        entry.AccessSuspended = !entry.AccessSuspended;
                     }
                 }).GetAwaiter().GetResult();
             }
-            else if (AdminCommands.TryParseUserReceiving(commandId, out var receivingUserId))
+            else if (AdminCommands.TryParseUserSendMode(commandId, out var sendModeUserId, out var sendMode))
             {
                 Plugin.Instance.AdminSettingsStore.MutateAsync(s =>
                 {
-                    var entry = s.UserAccess.FirstOrDefault(u => u.UserId == receivingUserId);
+                    var entry = s.UserAccess.FirstOrDefault(u => u.UserId == sendModeUserId);
                     if (entry != null)
                     {
-                        entry.AllowReceiving = !entry.AllowReceiving;
+                        entry.SendMode = sendMode;
                     }
                 }).GetAwaiter().GetResult();
             }
-            else if (AdminCommands.TryParseUserMediaType(commandId, out var userId, out var userMediaType))
+            else if (AdminCommands.TryParseUserTarget(commandId, out var userId, out var targetUserId))
             {
                 Plugin.Instance.AdminSettingsStore.MutateAsync(s =>
                 {
                     var entry = s.UserAccess.FirstOrDefault(u => u.UserId == userId);
                     if (entry != null)
                     {
-                        ToggleListMembership(entry.AllowedMediaTypes, userMediaType);
+                        ToggleListMembership(entry.AllowedTargetUserIds, targetUserId);
                     }
                 }).GetAwaiter().GetResult();
             }

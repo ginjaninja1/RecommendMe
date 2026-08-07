@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 using Emby.Web.GenericEdit.Elements;
 using Emby.Web.GenericEdit.Elements.DxGrid;
 using MediaBrowser.Controller.Entities;
-using RecommendMe.Models;
 
 namespace RecommendMe.UI.History
 {
@@ -67,14 +66,15 @@ namespace RecommendMe.UI.History
                 }
 
                 // Visibility isolation: for non-private records the viewer must be
-                // the sender/recipient, or the OTHER party must be someone the
-                // admin has made visible to the viewer (approximated here via the
-                // same send/receive scope used for permission checks).
+                // the sender/recipient, or the OTHER party's send permission must
+                // currently cover that recipient (approximated here via the same
+                // SendMode check used for real permission enforcement).
                 if (!isSender && !isRecipient)
                 {
-                    var otherPartyIsVisible =
-                        IsInScope(adminSettings.SendScope, adminSettings.SendScopeUserIds, r.SentByUserId) &&
-                        IsInScope(adminSettings.ReceiveScope, adminSettings.ReceiveScopeUserIds, r.SentToUserId);
+                    var senderEntry = adminSettings.UserAccess.FirstOrDefault(u => u.UserId == r.SentByUserId);
+                    var otherPartyIsVisible = senderEntry != null
+                        && !senderEntry.AccessSuspended
+                        && Services.PermissionService.IsTargetAllowed(senderEntry, r.SentToUserId);
 
                     if (!otherPartyIsVisible)
                     {
@@ -108,9 +108,6 @@ namespace RecommendMe.UI.History
                 })
                 .ToArray();
         }
-
-        private static bool IsInScope(AccessScope scope, List<long> allowList, long userId) =>
-            scope == AccessScope.AllUsers || allowList.Contains(userId);
 
         private static DateTime? DateRangeToCutoffUtc(string dateRangeFilter)
         {

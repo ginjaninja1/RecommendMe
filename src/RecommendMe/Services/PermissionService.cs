@@ -7,16 +7,17 @@ using RecommendMe.Storage;
 namespace RecommendMe.Services
 {
     /// <summary>
-    /// Resolves the effective send/receive/media-type permissions for a user,
-    /// combining the admin-configured global scope, the per-user
-    /// <see cref="UserAccessEntry"/> (materialized from <see cref="DefaultUserProfile"/>
-    /// the first time a user is seen), and the user's own Account-tab
-    /// opt-outs (<see cref="UserPreferenceStore"/>).
+    /// Resolves whether a source user may send a recommendation of a given
+    /// media type to a target user. Combines the admin-configured global
+    /// media type list, the sender's own SendMode/AllowedTargetUserIds
+    /// (materialized from <see cref="AdminSettings.NewUserDefaultSendMode"/>
+    /// the first time a user is seen), either side's Emergency Revocation
+    /// flag, and the recipient's own Account-tab opt-outs (<see cref="UserPreferenceStore"/>).
     ///
     /// Resolution order (most to least restrictive wins):
-    /// 1. Global SendScope/ReceiveScope (AllUsers vs SpecificUsers allow-list)
-    /// 2. Per-user AllowSending/AllowReceiving (covers Emergency Revocation)
-    /// 3. Per-user AllowedMediaTypes ∩ GloballyAllowedMediaTypes
+    /// 1. GloballyAllowedMediaTypes (server-wide - the type must be offerable at all)
+    /// 2. AccessSuspended on either side (Emergency Revocation)
+    /// 3. Source's SendMode (Everyone / NoOne / SpecificUsers allow-list)
     /// 4. Recipient's own opt-out of this specific sender/media-type
     /// </summary>
     public class PermissionService
@@ -32,9 +33,11 @@ namespace RecommendMe.Services
 
         /// <summary>
         /// Ensures a UserAccessEntry exists for this user, creating one from
-        /// the DefaultUserProfile template on first sight. Call this whenever
-        /// a user is about to be shown in the UI or evaluated for permission,
-        /// so admins always see every known user in the matrix.
+        /// NewUserDefaultSendMode on first sight. When AutoGrantNewUsersToExistingSendLists
+        /// is set, also adds this new user to every existing SpecificUsers-mode
+        /// user's AllowedTargetUserIds. Call this whenever a user is about to
+        /// be shown in the UI or evaluated for permission, so admins always
+        /// see every known user in the matrix.
         /// </summary>
         public async Task<UserAccessEntry> EnsureUserAccessEntryAsync(User user)
         {
@@ -49,16 +52,29 @@ namespace RecommendMe.Services
             {
                 UserId = user.InternalId,
                 UserName = user.Name,
-                AllowSending = settings.DefaultProfile.AllowSending,
-                AllowReceiving = settings.DefaultProfile.AllowReceiving,
-                AllowedMediaTypes = settings.DefaultProfile.AllowedMediaTypes.ToList()
+                SendMode = settings.NewUserDefaultSendMode
             };
 
             await this.adminSettingsStore.MutateAsync(s =>
             {
-                if (!s.UserAccess.Any(u => u.UserId == user.InternalId))
+                if (s.UserAccess.Any(u => u.UserId == user.InternalId))
                 {
-                    s.UserAccess.Add(created);
+                    return;
+                }
+
+                s.UserAccess.Add(created);
+
+                if (s.AutoGrantNewUsersToExistingSendLists)
+                {
+                    foreach (var existingEntry in s.UserAccess)
+                    {
+                        if (existingEntry.UserId != created.UserId
+                            && existingEntry.SendMode == SendMode.SpecificUsers
+                            && !existingEntry.AllowedTargetUserIds.Contains(created.UserId))
+                        {
+                            existingEntry.AllowedTargetUserIds.Add(created.UserId);
+                        }
+                    }
                 }
             }).ConfigureAwait(false);
 
@@ -69,41 +85,28 @@ namespace RecommendMe.Services
         {
             var settings = await this.adminSettingsStore.GetAsync().ConfigureAwait(false);
 
-            if (!IsInScope(settings.SendScope, settings.SendScopeUserIds, source.InternalId))
-            {
-                return false;
-            }
-
-            if (!IsInScope(settings.ReceiveScope, settings.ReceiveScopeUserIds, target.InternalId))
-            {
-                return false;
-            }
-
             if (!settings.GloballyAllowedMediaTypes.Contains(mediaType))
             {
                 return false;
             }
 
             var sourceEntry = await this.EnsureUserAccessEntryAsync(source).ConfigureAwait(false);
-            if (!sourceEntry.AllowSending || !sourceEntry.AllowedMediaTypes.Contains(mediaType))
-            {
-                // Self-recommendation is always allowed once basic sending access exists.
-                if (source.InternalId != target.InternalId)
-                {
-                    return false;
-                }
-            }
-
             var targetEntry = await this.EnsureUserAccessEntryAsync(target).ConfigureAwait(false);
-            if (!targetEntry.AllowReceiving || !targetEntry.AllowedMediaTypes.Contains(mediaType))
+
+            if (sourceEntry.AccessSuspended || targetEntry.AccessSuspended)
             {
                 return false;
             }
 
             if (source.InternalId == target.InternalId)
             {
-                // Self-recommendations bypass the recipient opt-out layer below (nothing to opt out of).
+                // Self-recommendation always allowed once basic access exists (i.e. not suspended).
                 return true;
+            }
+
+            if (!IsTargetAllowed(sourceEntry, target.InternalId))
+            {
+                return false;
             }
 
             var preferences = await this.userPreferenceStore.GetForUserAsync(target.InternalId).ConfigureAwait(false);
@@ -116,9 +119,26 @@ namespace RecommendMe.Services
             return true;
         }
 
-        private static bool IsInScope(AccessScope scope, System.Collections.Generic.List<long> allowList, long userId)
+        /// <summary>
+        /// Whether sourceEntry's SendMode permits sending to targetUserId.
+        /// Internal (not private) so other UI-layer builders that need the
+        /// same "would this currently be allowed" check - e.g. HistoryViewBuilder's
+        /// third-party visibility filter, RecommendViewBuilder's target picker -
+        /// can reuse this instead of re-implementing the SendMode switch.
+        /// </summary>
+        internal static bool IsTargetAllowed(UserAccessEntry sourceEntry, long targetUserId)
         {
-            return scope == AccessScope.AllUsers || allowList.Contains(userId);
+            switch (sourceEntry.SendMode)
+            {
+                case SendMode.Everyone:
+                    return true;
+                case SendMode.NoOne:
+                    return false;
+                case SendMode.SpecificUsers:
+                    return sourceEntry.AllowedTargetUserIds.Contains(targetUserId);
+                default:
+                    return false;
+            }
         }
     }
 }
