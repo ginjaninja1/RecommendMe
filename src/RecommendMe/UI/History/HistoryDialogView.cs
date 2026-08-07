@@ -70,9 +70,18 @@ namespace RecommendMe.UI.History
                     .BuildRowsAsync(this.viewer, ui.SelectedDateRange, ui.SelectedRecipient, ui.SelectedSender)
                     .ConfigureAwait(false);
                 ui.Grid.Options.dataSource = rows;
+
+                return this;
             }
 
-            return this;
+            // Anything else - "DialogCancel", "DialogOk", or unknown - must
+            // fall through to DialogViewBase (see base.RunCommand) rather
+            // than unconditionally returning `this`. DialogViewBase is the
+            // only thing that actually returns the parent view; blanket-
+            // returning `this` kept the dialog "open" against stale
+            // ContentData on every Cancel/Save click, which is what broke
+            // navigation and threw the client-side keyExpr error.
+            return await base.RunCommand(itemId, commandId, data).ConfigureAwait(false);
         }
 
         public override Task OnOkCommand(string providerId, string commandId, string data)

@@ -40,7 +40,17 @@ namespace RecommendMe.Services
         /// Gets the recipient's recommendation collection, creating it (and
         /// registering it) the first time they ever receive a recommendation.
         /// </summary>
-        public async Task<BoxSet> GetOrCreateCollectionAsync(User recipient)
+        /// <param name="recipient">The collection owner.</param>
+        /// <param name="seedItem">
+        /// The item to create the collection from. Required on first creation:
+        /// CollectionManager.CreateCollection (Emby core) only builds a BoxSet
+        /// by walking options.ItemIdList - with an empty list it silently
+        /// returns a null BoxSet (no exception), which is what caused the
+        /// NullReferenceException on created.InternalId below. UserIds is not
+        /// read anywhere in CreateCollection's implementation - it does not
+        /// scope collection membership/visibility - so it's dropped entirely.
+        /// </param>
+        public async Task<BoxSet> GetOrCreateCollectionAsync(User recipient, BaseItem seedItem)
         {
             var existingId = await this.registryStore.GetCollectionIdAsync(recipient.InternalId).ConfigureAwait(false);
             if (existingId.HasValue)
@@ -62,8 +72,17 @@ namespace RecommendMe.Services
             var created = await this.collectionManager.CreateCollection(new CollectionCreationOptions
             {
                 Name = name,
-                UserIds = new[] { recipient.InternalId }
+                ItemIdList = new[] { seedItem.InternalId }
             }).ConfigureAwait(false);
+
+            if (created == null)
+            {
+                // CreateCollection returns null (not a thrown exception) if it
+                // couldn't resolve seedItem via ILibraryManager.GetItemById -
+                // surface that plainly instead of NRE-ing on created.InternalId.
+                throw new System.InvalidOperationException(
+                    $"RecommendMe: CreateCollection returned no BoxSet for '{name}' (seed item {seedItem.InternalId}).");
+            }
 
             await this.registryStore.RegisterAsync(recipient.InternalId, created.InternalId, name).ConfigureAwait(false);
 
@@ -72,7 +91,12 @@ namespace RecommendMe.Services
 
         public async Task AddItemAsync(User recipient, BaseItem item)
         {
-            var collection = await this.GetOrCreateCollectionAsync(recipient).ConfigureAwait(false);
+            var collection = await this.GetOrCreateCollectionAsync(recipient, item).ConfigureAwait(false);
+
+            // Safe to call even when GetOrCreateCollectionAsync's own
+            // CreateCollection call just added `item` as the seed:
+            // BaseItem.AddCollection dedupes by linked-item id, so this is a
+            // no-op in that case rather than a duplicate entry.
             await this.collectionManager.AddToCollection(collection.InternalId, new[] { item.InternalId }).ConfigureAwait(false);
         }
 
