@@ -65,7 +65,7 @@ namespace RecommendMe.UI.History
                     var senderEntry = adminSettings.UserAccess.FirstOrDefault(u => u.UserId == r.SentByUserId);
                     var otherPartyIsVisible = senderEntry != null
                         && !senderEntry.AccessSuspended
-                        && Services.PermissionService.IsTargetAllowed(senderEntry, r.SentToUserId);
+                        && Services.PermissionService.IsTargetAllowed(senderEntry, r.SentToUserId, adminSettings);
 
                     if (!otherPartyIsVisible)
                     {

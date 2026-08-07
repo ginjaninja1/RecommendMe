@@ -34,6 +34,7 @@ namespace RecommendMe.UI.Recommend
             };
 
             var currentUserEntry = await plugin.PermissionService.EnsureUserAccessEntryAsync(currentUser).ConfigureAwait(false);
+            var settings = await plugin.AdminSettingsStore.GetAsync().ConfigureAwait(false);
             if (currentUserEntry.AccessSuspended)
             {
                 // Suspended users can still recommend to themselves, but not to anyone else.
@@ -53,7 +54,7 @@ namespace RecommendMe.UI.Recommend
                     continue;
                 }
 
-                if (PermissionService.IsTargetAllowed(currentUserEntry, candidate.InternalId))
+                if (PermissionService.IsTargetAllowed(currentUserEntry, candidate.InternalId, settings))
                 {
                     choices.Add(new EditorSelectOption(candidate.Name, candidate.Name));
                 }
@@ -83,12 +84,12 @@ namespace RecommendMe.UI.Recommend
                 Icon = GetIcon(item.GetType().Name),
                 IconMode = ItemListIconMode.SmallRegular,
                 Status = ItemStatus.Succeeded,
-                Button1 = new ButtonItem("Recommend") { CommandId = RecommendCommands.BuildSendCommandId(item.InternalId) }
+                Button2 = new ButtonItem("Recommend") { CommandId = RecommendCommands.BuildSendCommandId(item.InternalId) }
             };
 
             if (CanExpand(item.GetType().Name))
             {
-                result.Button2 = new ButtonItem("Info") { CommandId = RecommendCommands.BuildExpandCommandId(item.InternalId) };
+                result.Button1 = new ButtonItem("Info") { CommandId = RecommendCommands.BuildExpandCommandId(item.InternalId) };
             }
 
             return result;
@@ -105,7 +106,7 @@ namespace RecommendMe.UI.Recommend
 
         private static bool TrySetChildren(GenericListItem row, long parentId, IReadOnlyList<BaseItem> children)
         {
-            if (row.Button1?.CommandId == RecommendCommands.BuildSendCommandId(parentId))
+            if (row.Button2?.CommandId == RecommendCommands.BuildSendCommandId(parentId))
             {
                 row.SubItems = children.Select(BuildMediaItem).ToList();
                 return true;
@@ -122,7 +123,7 @@ namespace RecommendMe.UI.Recommend
         {
             foreach (var row in list)
             {
-                if (row.Button1?.CommandId == RecommendCommands.BuildSendCommandId(itemId))
+                if (row.Button2?.CommandId == RecommendCommands.BuildSendCommandId(itemId))
                 {
                     row.SecondaryText = message;
                     row.Status = success ? ItemStatus.Succeeded : ItemStatus.Failed;
@@ -137,7 +138,7 @@ namespace RecommendMe.UI.Recommend
         {
             foreach (var row in rows)
             {
-                if (row.Button1?.CommandId == RecommendCommands.BuildSendCommandId(itemId))
+                if (row.Button2?.CommandId == RecommendCommands.BuildSendCommandId(itemId))
                 {
                     row.SecondaryText = message;
                     row.Status = success ? ItemStatus.Succeeded : ItemStatus.Failed;

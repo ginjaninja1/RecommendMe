@@ -126,7 +126,7 @@ namespace RecommendMe.Services
                 return SendPermissionResult.Allowed;
             }
 
-            if (!IsTargetAllowed(sourceEntry, target.InternalId))
+            if (!IsTargetAllowed(sourceEntry, target.InternalId, settings))
             {
                 return SendPermissionResult.AdminBlocked;
             }
@@ -154,7 +154,7 @@ namespace RecommendMe.Services
         /// third-party visibility filter, RecommendViewBuilder's target picker -
         /// can reuse this instead of re-implementing the SendMode switch.
         /// </summary>
-        internal static bool IsTargetAllowed(UserAccessEntry sourceEntry, long targetUserId)
+        internal static bool IsTargetAllowed(UserAccessEntry sourceEntry, long targetUserId, AdminSettings settings)
         {
             switch (sourceEntry.SendMode)
             {
@@ -164,6 +164,8 @@ namespace RecommendMe.Services
                     return false;
                 case SendMode.SpecificUsers:
                     return sourceEntry.AllowedTargetUserIds.Contains(targetUserId);
+                case SendMode.MyGroups:
+                    return settings.Groups.Any(g => g.MemberUserIds.Contains(sourceEntry.UserId) && g.MemberUserIds.Contains(targetUserId));
                 default:
                     return false;
             }

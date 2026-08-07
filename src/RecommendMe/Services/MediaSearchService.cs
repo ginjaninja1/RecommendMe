@@ -29,7 +29,7 @@ namespace RecommendMe.Services
 
             var query = new InternalItemsQuery(searchingUser)
             {
-                SearchTerm = searchTerm,
+                NameContains = searchTerm,
                 IncludeItemTypes = allowedMediaTypes
                     .Where(t => t != Models.RecommendableMediaTypes.BoxSet && t != Models.RecommendableMediaTypes.Season)
                     .ToArray(),

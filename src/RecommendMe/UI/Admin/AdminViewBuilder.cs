@@ -13,15 +13,13 @@ namespace RecommendMe.UI.Admin
         {
             return new AdminSettingsUI
             {
-                MediaTypeList = BuildMediaTypeList(settings.GloballyAllowedMediaTypes),
-
                 NewUserDefaultsList = BuildNewUserDefaultsList(settings),
 
                 UserAccessList = BuildUserAccessList(settings, allUsers)
             };
         }
 
-        private static GenericItemList BuildMediaTypeList(List<string> allowed)
+        internal static GenericItemList BuildMediaTypeList(List<string> allowed)
         {
             var list = new GenericItemList();
 
@@ -108,7 +106,7 @@ namespace RecommendMe.UI.Admin
                         var included = entry.AllowedTargetUserIds.Contains(target.InternalId);
                         subItems.Add(new GenericListItem
                         {
-                            PrimaryText = $"  Can send to: {target.Name}",
+                            PrimaryText = $"Can send to: {target.Name}",
                             Status = included ? ItemStatus.Succeeded : ItemStatus.Unavailable,
                             Toggle = new ToggleButtonItem("Included")
                             {
@@ -122,6 +120,7 @@ namespace RecommendMe.UI.Admin
                 list.Add(new GenericListItem
                 {
                     PrimaryText = entry.UserName,
+                    Icon = IconNames.person,
                     SecondaryText = DescribeSendMode(entry),
                     Status = entry.AccessSuspended ? ItemStatus.Failed : ItemStatus.Succeeded,
                     Button1 = BuildSendModeButton(entry),
@@ -142,6 +141,8 @@ namespace RecommendMe.UI.Admin
                     return "Can send to: No One";
                 case SendMode.SpecificUsers:
                     return $"Can send to: {entry.AllowedTargetUserIds.Count} named user(s) - see below";
+                case SendMode.MyGroups:
+                    return "Can send to: members of their group(s)";
                 default:
                     return null;
             }
@@ -156,7 +157,8 @@ namespace RecommendMe.UI.Admin
                 {
                     new ButtonItem("Everyone") { CommandId = AdminCommands.BuildUserSendModeCommand(entry.UserId, SendMode.Everyone) },
                     new ButtonItem("No One") { CommandId = AdminCommands.BuildUserSendModeCommand(entry.UserId, SendMode.NoOne) },
-                    new ButtonItem("Specific Users") { CommandId = AdminCommands.BuildUserSendModeCommand(entry.UserId, SendMode.SpecificUsers) }
+                    new ButtonItem("Specific Users") { CommandId = AdminCommands.BuildUserSendModeCommand(entry.UserId, SendMode.SpecificUsers) },
+                    new ButtonItem("My Group(s) Members") { CommandId = AdminCommands.BuildUserSendModeCommand(entry.UserId, SendMode.MyGroups) }
                 }
             };
         }

@@ -1,5 +1,6 @@
 ﻿namespace RecommendMe.UI
 {
+    using System.Collections.Generic;
     using System.Threading.Tasks;
     using MediaBrowser.Controller;
     using MediaBrowser.Model.Dto;
@@ -19,11 +20,12 @@
     /// that's required (menu-visibility flags alone don't enforce anything).
     /// The ordinary-user-facing entry point is <see cref="UserPageController"/>.
     /// </summary>
-    internal class AdminPageController : ControllerBase, IPluginPageSecurity
+    internal class AdminPageController : ControllerBase, IPluginPageSecurity, IHasTabbedUIPages
     {
         private readonly PluginInfo pluginInfo;
         private readonly IServerApplicationHost applicationHost;
         private readonly ILogger logger;
+        private readonly List<IPluginUIPageController> tabPages;
 
         public AdminPageController(PluginInfo pluginInfo, IServerApplicationHost applicationHost, ILogger logger)
             : base(pluginInfo.Id)
@@ -41,9 +43,17 @@
                 MenuIcon = "recommend",
                 IsMainConfigPage = true
             };
+
+            this.tabPages = new List<IPluginUIPageController>
+            {
+                new TabPageController(pluginInfo, "RecommendMeGroups", "Groups", info => new GroupsPageView(info, applicationHost, logger), true),
+                new TabPageController(pluginInfo, "RecommendMeMedia", "Media", info => new MediaPageView(info, logger), true)
+            };
         }
 
         public override PluginPageInfo PageInfo { get; }
+
+        public IReadOnlyList<IPluginUIPageController> TabPageControllers => this.tabPages.AsReadOnly();
 
         public override Task<IPluginUIView> CreateDefaultPageView()
         {

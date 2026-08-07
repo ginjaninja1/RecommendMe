@@ -22,7 +22,7 @@ namespace RecommendMe.Models
 
         public static readonly IReadOnlyList<string> All = new[]
         {
-            Movie, Series, Season, Episode, Person, MusicArtist, MusicAlbum, Song
+            Movie, Person, Series, Season, Episode, MusicArtist, MusicAlbum, Song
         };
     }
 
@@ -36,7 +36,15 @@ namespace RecommendMe.Models
     {
         Everyone,
         NoOne,
-        SpecificUsers
+        SpecificUsers,
+        MyGroups
+    }
+
+    public class UserGroup
+    {
+        public string Id { get; set; } = System.Guid.NewGuid().ToString("N");
+        public string Name { get; set; }
+        public List<long> MemberUserIds { get; set; } = new List<long>();
     }
 
     /// <summary>
@@ -101,5 +109,7 @@ namespace RecommendMe.Models
         public bool AutoGrantNewUsersToExistingSendLists { get; set; } = true;
 
         public List<UserAccessEntry> UserAccess { get; set; } = new List<UserAccessEntry>();
+
+        public List<UserGroup> Groups { get; set; } = new List<UserGroup>();
     }
 }

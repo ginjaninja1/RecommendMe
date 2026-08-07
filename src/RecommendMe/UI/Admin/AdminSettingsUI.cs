@@ -12,13 +12,9 @@ namespace RecommendMe.UI.Admin
     /// </summary>
     public class AdminSettingsUI : EditableOptionsBase
     {
-        public override string EditorTitle => "RecommendMe - Admin Settings";
+        public override string EditorTitle => "Users";
 
         public override string EditorDescription => "Control who can recommend to whom.";
-
-        public CaptionItem MediaTypeHeading { get; set; } = new CaptionItem("Recommendable Media Types (server-wide)");
-
-        public GenericItemList MediaTypeList { get; set; } = new GenericItemList();
 
         public CaptionItem NewUserHeading { get; set; } = new CaptionItem("New User Defaults");
 

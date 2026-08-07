@@ -31,7 +31,7 @@ namespace RecommendMe.UI.Account
                 foreach (var candidate in plugin.GetAllUsers().Where(u => u.InternalId != viewer.InternalId).OrderBy(u => u.Name))
                 {
                     var candidateEntry = await plugin.PermissionService.EnsureUserAccessEntryAsync(candidate).ConfigureAwait(false);
-                    if (candidateEntry.AccessSuspended || !PermissionService.IsTargetAllowed(candidateEntry, viewer.InternalId))
+                    if (candidateEntry.AccessSuspended || !PermissionService.IsTargetAllowed(candidateEntry, viewer.InternalId, settings))
                     {
                         continue;
                     }
@@ -41,12 +41,12 @@ namespace RecommendMe.UI.Account
                     var isBlocked = existingPref?.Blocked ?? false;
 
                     var subItems = new GenericItemList();
-                    foreach (var mediaType in settings.GloballyAllowedMediaTypes)
+                    foreach (var mediaType in RecommendMe.Models.RecommendableMediaTypes.All.Where(settings.GloballyAllowedMediaTypes.Contains))
                     {
                         var isOptedIn = !optedOut.Contains(mediaType);
                         subItems.Add(new GenericListItem
                         {
-                            PrimaryText = $"  {mediaType}",
+                            PrimaryText = mediaType,
                             Icon = global::RecommendMe.UI.Recommend.RecommendViewBuilder.GetIcon(mediaType),
                             Status = isOptedIn ? ItemStatus.Succeeded : ItemStatus.Unavailable,
                             Toggle = new ToggleButtonItem("Receive")
