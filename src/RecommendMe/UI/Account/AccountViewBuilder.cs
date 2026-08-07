@@ -47,6 +47,7 @@ namespace RecommendMe.UI.Account
                         subItems.Add(new GenericListItem
                         {
                             PrimaryText = $"  {mediaType}",
+                            Icon = global::RecommendMe.UI.Recommend.RecommendViewBuilder.GetIcon(mediaType),
                             Status = isOptedIn ? ItemStatus.Succeeded : ItemStatus.Unavailable,
                             Toggle = new ToggleButtonItem("Receive")
                             {

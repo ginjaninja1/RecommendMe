@@ -30,6 +30,7 @@ namespace RecommendMe.UI.Admin
                 list.Add(new GenericListItem
                 {
                     PrimaryText = mediaType,
+                    Icon = global::RecommendMe.UI.Recommend.RecommendViewBuilder.GetIcon(mediaType),
                     Status = allowed.Contains(mediaType) ? ItemStatus.Succeeded : ItemStatus.Unavailable,
                     Toggle = new ToggleButtonItem("Allowed")
                     {

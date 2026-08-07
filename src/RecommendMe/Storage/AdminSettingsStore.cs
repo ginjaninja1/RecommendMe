@@ -27,7 +27,13 @@ namespace RecommendMe.Storage
                 logger);
         }
 
-        public Task<AdminSettings> GetAsync() => this.repository.ReadAsync();
+        public async Task<AdminSettings> GetAsync()
+        {
+            var settings = await this.repository.ReadAsync().ConfigureAwait(false);
+            settings.GloballyAllowedMediaTypes ??= new System.Collections.Generic.List<string>();
+            settings.GloballyAllowedMediaTypes.RemoveAll(t => t == RecommendableMediaTypes.BoxSet);
+            return settings;
+        }
 
         public Task SaveAsync(AdminSettings settings) => this.repository.WriteAsync(settings);
 

@@ -16,8 +16,10 @@ namespace RecommendMe.UI.Recommend
         public const string OpenHistory = "openhistory";
 
         private const string SendPrefix = "send:";
+        private const string ExpandPrefix = "expand:";
 
         public static string BuildSendCommandId(long itemId) => $"{SendPrefix}{itemId}";
+        public static string BuildExpandCommandId(long itemId) => $"{ExpandPrefix}{itemId}";
 
         public static bool TryParseSend(string commandId, out long itemId)
         {
@@ -29,6 +31,14 @@ namespace RecommendMe.UI.Recommend
             }
 
             return long.TryParse(commandId.Substring(SendPrefix.Length), out itemId);
+        }
+
+        public static bool TryParseExpand(string commandId, out long itemId)
+        {
+            itemId = 0;
+            return commandId != null
+                && commandId.StartsWith(ExpandPrefix, StringComparison.OrdinalIgnoreCase)
+                && long.TryParse(commandId.Substring(ExpandPrefix.Length), out itemId);
         }
     }
 }

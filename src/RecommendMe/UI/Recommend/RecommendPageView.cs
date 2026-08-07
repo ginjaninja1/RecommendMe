@@ -120,6 +120,16 @@ namespace RecommendMe.UI.Recommend
                 return this.HandleSendAsync(ui, currentUser, itemToRecommendId);
             }
 
+            if (RecommendCommands.TryParseExpand(commandId, out var itemToExpandId))
+            {
+                var parent = Plugin.Instance.LibraryManager.GetItemById(itemToExpandId);
+                if (parent != null)
+                {
+                    RecommendViewBuilder.TrySetChildren(ui.SearchResults, itemToExpandId, this.searchService.GetChildren(currentUser, parent));
+                }
+                return Task.FromResult<IPluginUIView>(this);
+            }
+
             // updateformstate and anything else: refresh the target list
             // (cheap) and re-render with whatever the client posted back.
             ui.TargetUserChoices = RecommendViewBuilder.BuildTargetUserChoicesAsync(currentUser).GetAwaiter().GetResult();
@@ -145,7 +155,10 @@ namespace RecommendMe.UI.Recommend
 
                 if (targetUser == null || item == null)
                 {
-                    ui.StatusMessage = RecommendViewBuilder.BuildStatusMessage("Select a recipient before recommending.", false);
+                    RecommendViewBuilder.TrySetRecommendationStatus(ui.SearchResults, itemId, "Select a recipient before recommending.", false);
+                    ui.StatusMessage = item == null
+                        ? RecommendViewBuilder.BuildStatusMessage("That media item is no longer available.", false)
+                        : new Emby.Web.GenericEdit.Elements.List.GenericItemList();
                     return this;
                 }
 
@@ -155,21 +168,24 @@ namespace RecommendMe.UI.Recommend
                     .SendRecommendationAsync(currentUser, targetUser, item, mediaType, ui.IsPrivate)
                     .ConfigureAwait(false);
 
-                ui.StatusMessage = result switch
+                var status = result switch
                 {
-                    RecommendationResult.Success => RecommendViewBuilder.BuildStatusMessage($"Recommended \"{item.Name}\" to {targetUser.Name}.", true),
-                    RecommendationResult.NotPermitted => RecommendViewBuilder.BuildStatusMessage("You don't have permission to recommend this to that user.", false),
-                    RecommendationResult.RecipientBlockedSender => RecommendViewBuilder.BuildStatusMessage($"Recommendation dropped - {targetUser.Name} is not accepting recommendations from you.", false),
-                    RecommendationResult.RecipientOptedOutMediaType => RecommendViewBuilder.BuildStatusMessage($"Recommendation dropped - {targetUser.Name} is not accepting {mediaType} recommendations from you.", false),
-                    RecommendationResult.AlreadyWatchedByRecipient => RecommendViewBuilder.BuildStatusMessage($"{targetUser.Name} has already watched this.", false),
-                    RecommendationResult.AlreadyInRecipientCollection => RecommendViewBuilder.BuildStatusMessage($"{targetUser.Name} already has this item in their recommendation collection.", false),
-                    _ => RecommendViewBuilder.BuildStatusMessage("Something went wrong.", false)
+                    RecommendationResult.Success => ($"Recommended to {targetUser.Name}.", true),
+                    RecommendationResult.NotPermitted => ("You don't have permission to recommend this to that user.", false),
+                    RecommendationResult.RecipientBlockedSender => ($"{targetUser.Name} is not accepting recommendations from you.", false),
+                    RecommendationResult.RecipientOptedOutMediaType => ($"{targetUser.Name} is not accepting {mediaType} recommendations from you.", false),
+                    RecommendationResult.AlreadyWatchedByRecipient => ($"{targetUser.Name} has already watched this.", false),
+                    RecommendationResult.AlreadyInRecipientCollection => ($"{targetUser.Name} already has this in their recommendation collection.", false),
+                    _ => ("Something went wrong.", false)
                 };
+                RecommendViewBuilder.TrySetRecommendationStatus(ui.SearchResults, itemId, status.Item1, status.Item2);
+                ui.StatusMessage = new Emby.Web.GenericEdit.Elements.List.GenericItemList();
             }
             catch (Exception ex)
             {
                 this.logger.ErrorException("RecommendMe: error sending recommendation", ex);
-                ui.StatusMessage = RecommendViewBuilder.BuildStatusMessage("Something went wrong sending that recommendation.", false);
+                RecommendViewBuilder.TrySetRecommendationStatus(ui.SearchResults, itemId, "Something went wrong sending that recommendation.", false);
+                ui.StatusMessage = new Emby.Web.GenericEdit.Elements.List.GenericItemList();
             }
 
             return this;

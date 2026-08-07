@@ -100,6 +100,11 @@ namespace RecommendMe.Services
 
         public async Task<SendPermissionResult> CanSendAsync(User source, User target, string mediaType)
         {
+            if (mediaType == RecommendableMediaTypes.BoxSet)
+            {
+                return SendPermissionResult.AdminBlocked;
+            }
+
             var settings = await this.adminSettingsStore.GetAsync().ConfigureAwait(false);
 
             if (!settings.GloballyAllowedMediaTypes.Contains(mediaType))

@@ -5,6 +5,9 @@ using Emby.Web.GenericEdit.Common;
 using Emby.Web.GenericEdit.Elements;
 using Emby.Web.GenericEdit.Elements.List;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.Audio;
+using MediaBrowser.Controller.Entities.TV;
+using RecommendMe.Models;
 using RecommendMe.Services;
 
 namespace RecommendMe.UI.Recommend
@@ -65,21 +68,114 @@ namespace RecommendMe.UI.Recommend
 
             foreach (var item in items)
             {
-                list.Add(new GenericListItem
-                {
-                    PrimaryText = item.Name,
-                    SecondaryText = item.GetType().Name,
-                    Icon = IconNames.video_library,
-                    IconMode = ItemListIconMode.SmallRegular,
-                    Status = ItemStatus.Succeeded,
-                    Button1 = new ButtonItem("Recommend")
-                    {
-                        CommandId = RecommendCommands.BuildSendCommandId(item.InternalId)
-                    }
-                });
+                list.Add(BuildMediaItem(item));
             }
 
             return list;
+        }
+
+        public static GenericListItem BuildMediaItem(BaseItem item)
+        {
+            var result = new GenericListItem
+            {
+                PrimaryText = FormatTitle(item),
+                SecondaryText = string.Empty,
+                Icon = GetIcon(item.GetType().Name),
+                IconMode = ItemListIconMode.SmallRegular,
+                Status = ItemStatus.Succeeded,
+                Button1 = new ButtonItem("Recommend") { CommandId = RecommendCommands.BuildSendCommandId(item.InternalId) }
+            };
+
+            if (CanExpand(item.GetType().Name))
+            {
+                result.Button2 = new ButtonItem("Info") { CommandId = RecommendCommands.BuildExpandCommandId(item.InternalId) };
+            }
+
+            return result;
+        }
+
+        public static bool TrySetChildren(GenericItemList list, long parentId, IReadOnlyList<BaseItem> children)
+        {
+            foreach (var row in list)
+            {
+                if (TrySetChildren(row, parentId, children)) return true;
+            }
+            return false;
+        }
+
+        private static bool TrySetChildren(GenericListItem row, long parentId, IReadOnlyList<BaseItem> children)
+        {
+            if (row.Button1?.CommandId == RecommendCommands.BuildSendCommandId(parentId))
+            {
+                row.SubItems = children.Select(BuildMediaItem).ToList();
+                return true;
+            }
+            if (row.SubItems == null) return false;
+            foreach (var child in row.SubItems)
+            {
+                if (TrySetChildren(child, parentId, children)) return true;
+            }
+            return false;
+        }
+
+        public static bool TrySetRecommendationStatus(GenericItemList list, long itemId, string message, bool success)
+        {
+            foreach (var row in list)
+            {
+                if (row.Button1?.CommandId == RecommendCommands.BuildSendCommandId(itemId))
+                {
+                    row.SecondaryText = message;
+                    row.Status = success ? ItemStatus.Succeeded : ItemStatus.Failed;
+                    return true;
+                }
+                if (row.SubItems != null && TrySetRecommendationStatus(row.SubItems, itemId, message, success)) return true;
+            }
+            return false;
+        }
+
+        private static bool TrySetRecommendationStatus(IEnumerable<GenericListItem> rows, long itemId, string message, bool success)
+        {
+            foreach (var row in rows)
+            {
+                if (row.Button1?.CommandId == RecommendCommands.BuildSendCommandId(itemId))
+                {
+                    row.SecondaryText = message;
+                    row.Status = success ? ItemStatus.Succeeded : ItemStatus.Failed;
+                    return true;
+                }
+                if (row.SubItems != null && TrySetRecommendationStatus(row.SubItems, itemId, message, success)) return true;
+            }
+            return false;
+        }
+
+        private static bool CanExpand(string type) => type == RecommendableMediaTypes.Series || type == RecommendableMediaTypes.Season || type == RecommendableMediaTypes.MusicArtist || type == RecommendableMediaTypes.MusicAlbum;
+
+        private static string FormatTitle(BaseItem item)
+        {
+            if (item is Episode episode)
+                return $"S{episode.ParentIndexNumber.GetValueOrDefault():00}E{episode.IndexNumber.GetValueOrDefault():00} {episode.Name} - {episode.SeriesName}";
+            if (item is MusicAlbum album)
+                return JoinNonEmpty(album.Name, string.Join(", ", album.AlbumArtists ?? System.Array.Empty<string>()));
+            if (item is Audio song)
+                return JoinNonEmpty(song.Name, string.Join(", ", song.Artists ?? System.Array.Empty<string>()), song.Album);
+            return item.Name;
+        }
+
+        private static string JoinNonEmpty(params string[] values) => string.Join(" - ", values.Where(v => !string.IsNullOrWhiteSpace(v)));
+
+        internal static IconNames GetIcon(string type)
+        {
+            switch (type)
+            {
+                case RecommendableMediaTypes.MusicArtist: return IconNames.person_pin;
+                case RecommendableMediaTypes.Person: return IconNames.person;
+                case RecommendableMediaTypes.Song: return IconNames.music_note;
+                case RecommendableMediaTypes.MusicAlbum: return IconNames.music_video;
+                case RecommendableMediaTypes.Movie: return IconNames.video_library;
+                case RecommendableMediaTypes.BoxSet: return IconNames.folder_special;
+                case RecommendableMediaTypes.Series: return IconNames.tv;
+                default: return type.IndexOf("Person", System.StringComparison.OrdinalIgnoreCase) >= 0 ? IconNames.person_pin_circle : IconNames.input;
+            }
         }
 
         /// <summary>Resolves the Value posted back from TargetUserChoices (a raw username) to a real User.</summary>

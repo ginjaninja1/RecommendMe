@@ -15,13 +15,14 @@ namespace RecommendMe.Models
         public const string Season = "Season";
         public const string Episode = "Episode";
         public const string BoxSet = "BoxSet";
+        public const string Person = "Person";
         public const string MusicArtist = "MusicArtist";
         public const string MusicAlbum = "MusicAlbum";
         public const string Song = "Audio";
 
         public static readonly IReadOnlyList<string> All = new[]
         {
-            Movie, Series, Season, Episode, BoxSet, MusicArtist, MusicAlbum, Song
+            Movie, Series, Season, Episode, Person, MusicArtist, MusicAlbum, Song
         };
     }
 

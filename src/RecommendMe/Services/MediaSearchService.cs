@@ -20,7 +20,7 @@ namespace RecommendMe.Services
             this.libraryManager = libraryManager;
         }
 
-        public IReadOnlyList<BaseItem> Search(User searchingUser, string searchTerm, IReadOnlyList<string> allowedMediaTypes, int limit = 25)
+        public IReadOnlyList<BaseItem> Search(User searchingUser, string searchTerm, IReadOnlyList<string> allowedMediaTypes, int limit = 10)
         {
             if (string.IsNullOrWhiteSpace(searchTerm) || allowedMediaTypes.Count == 0)
             {
@@ -30,11 +30,48 @@ namespace RecommendMe.Services
             var query = new InternalItemsQuery(searchingUser)
             {
                 SearchTerm = searchTerm,
-                IncludeItemTypes = allowedMediaTypes.ToArray(),
+                IncludeItemTypes = allowedMediaTypes
+                    .Where(t => t != Models.RecommendableMediaTypes.BoxSet && t != Models.RecommendableMediaTypes.Season)
+                    .ToArray(),
                 Recursive = true,
                 IsVirtualItem = false,
                 Limit = limit
             };
+
+            return this.libraryManager.GetItemList(query);
+        }
+
+        public IReadOnlyList<BaseItem> GetChildren(User user, BaseItem parent)
+        {
+            var type = parent.GetType().Name;
+            var query = new InternalItemsQuery(user) { Recursive = true, IsVirtualItem = false };
+
+            if (type == Models.RecommendableMediaTypes.Series)
+            {
+                query.IncludeItemTypes = new[] { Models.RecommendableMediaTypes.Season };
+                query.SeriesIds = new[] { parent.InternalId };
+                query.Recursive = false;
+            }
+            else if (type == Models.RecommendableMediaTypes.Season)
+            {
+                query.IncludeItemTypes = new[] { Models.RecommendableMediaTypes.Episode };
+                query.ParentIds = new[] { parent.InternalId };
+            }
+            else if (type == Models.RecommendableMediaTypes.MusicArtist)
+            {
+                query.IncludeItemTypes = new[] { Models.RecommendableMediaTypes.MusicAlbum };
+                query.ArtistIds = new[] { parent.InternalId };
+                query.GroupByAlbumId = true;
+            }
+            else if (type == Models.RecommendableMediaTypes.MusicAlbum)
+            {
+                query.IncludeItemTypes = new[] { Models.RecommendableMediaTypes.Song };
+                query.AlbumIds = new[] { parent.InternalId };
+            }
+            else
+            {
+                return System.Array.Empty<BaseItem>();
+            }
 
             return this.libraryManager.GetItemList(query);
         }
