@@ -8,22 +8,33 @@ using System.ComponentModel;
 namespace RecommendMe.UI.History
 {
     /// <summary>
-    /// One row of the history grid. Property names/order define the grid
-    /// columns built in <see cref="HistoryViewBuilder"/>.
+    /// One row of the history grid. Property DECLARATION ORDER is the grid's
+    /// default column order (DxColumnBuilder.CreateColumns reflects over the
+    /// type via TypeDescriptor.GetProperties) - see HistoryViewBuilder.BuildEmptyGrid.
     /// </summary>
     public class HistoryRow
     {
-        public string MediaType { get; set; }
+        /// <summary>Grid row key (DxGridOptions keyExpr). Hidden - not a user-facing column.</summary>
+        [Browsable(false)]
+        public string RecommendationId { get; set; }
 
-        public string Name { get; set; }
-
-        public string DateRecommended { get; set; }
-
-        public string RecommendedBy { get; set; }
-
+        [DisplayName("Recommended To")]
         public string RecommendedTo { get; set; }
 
+        [DisplayName("Recommended By")]
+        public string RecommendedBy { get; set; }
+
+        [DisplayName("Private")]
         public string Private { get; set; }
+
+        [DisplayName("Date Recommended")]
+        public string DateRecommended { get; set; }
+
+        [DisplayName("Media Type")]
+        public string MediaType { get; set; }
+
+        [DisplayName("Name")]
+        public string Name { get; set; }
     }
 
     /// <summary>
@@ -31,9 +42,10 @@ namespace RecommendMe.UI.History
     /// is allowed to see (per privacy/visibility isolation - a security
     /// boundary, so it stays server-side) are loaded once when the dialog
     /// opens. Date range / sender / recipient / media-type filtering is
-    /// handled entirely client-side by DxDataGrid's native filter row over
-    /// that row set - there is no server postback filter here to go stale or
-    /// silently drop rows. See HistoryViewBuilder.BuildRowsAsync.
+    /// handled entirely client-side by DxDataGrid's own filter row and
+    /// header filters over that row set (see HistoryViewBuilder.BuildEmptyGrid) -
+    /// there is no server postback filter here to go stale or silently drop
+    /// rows.
     /// </summary>
     public class HistoryUI : EditableOptionsBase
     {

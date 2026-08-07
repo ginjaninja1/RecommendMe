@@ -1,7 +1,6 @@
 ﻿using Emby.Web.GenericEdit.Elements;
 using Emby.Web.GenericEdit.Elements.DxGrid;
 using MediaBrowser.Controller.Entities;
-using System;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -11,25 +10,19 @@ namespace RecommendMe.UI.History
     {
         public static DxDataGrid BuildEmptyGrid()
         {
-            var columns = new DxGridColumnList
+            // Mirrors ListManagementUI.Build's working pattern: this
+            // constructor - not a manually-populated DxGridOptions - is what
+            // actually sets allowColumnReordering, allowColumnResizing,
+            // columnResizingMode, columnAutoWidth, filterSyncEnabled and
+            // headerFilter. Columns are derived by reflecting over HistoryRow
+            // in property-declaration order (DxColumnBuilder.CreateColumns),
+            // which is why HistoryRow's property order IS the column order -
+            // see the ordering comment on HistoryRow itself.
+            //
+            // Args: (editObject, keyExpr, multiSelect, disableColumnChooser, showFilterRow, showHeaderFilter)
+            var options = new DxGridOptions(new HistoryRow(), nameof(HistoryRow.RecommendationId), false, true, true, true)
             {
-                new DxGridColumn { dataField = nameof(HistoryRow.MediaType), caption = "Media Type", allowSorting = true, allowFiltering = true, dataType = DxGridColumn.ColumnDataType.@string },
-                new DxGridColumn { dataField = nameof(HistoryRow.Name), caption = "Name", allowSorting = true, allowFiltering = true, dataType = DxGridColumn.ColumnDataType.@string },
-                new DxGridColumn { dataField = nameof(HistoryRow.DateRecommended), caption = "Date Recommended", allowSorting = true, allowFiltering = true, dataType = DxGridColumn.ColumnDataType.@string },
-                new DxGridColumn { dataField = nameof(HistoryRow.RecommendedBy), caption = "Recommended By", allowSorting = true, allowFiltering = true, dataType = DxGridColumn.ColumnDataType.@string },
-                new DxGridColumn { dataField = nameof(HistoryRow.RecommendedTo), caption = "Recommended To", allowSorting = true, allowFiltering = true, dataType = DxGridColumn.ColumnDataType.@string },
-                new DxGridColumn { dataField = nameof(HistoryRow.Private), caption = "Private", allowSorting = true, allowFiltering = true, dataType = DxGridColumn.ColumnDataType.@string }
-            };
-
-            var options = new DxGridOptions
-            {
-                columns = columns,
-                dataSource = Array.Empty<object>(),
-                filterRow = new DxGridFilterRow(),
-                sorting = new DxGridSorting { mode = DxGridSorting.GridSortingMode.multiple },
-                paging = new DxGridPaging { enabled = true, pageSize = 25 },
-                columnAutoWidth = true,
-                showBorders = true
+                heightMode = DxGridOptions.GridHeightMode.large
             };
 
             return new DxDataGrid(options);
@@ -91,6 +84,7 @@ namespace RecommendMe.UI.History
                 .OrderByDescending(r => r.DateSentUtc)
                 .Select(r => new HistoryRow
                 {
+                    RecommendationId = r.RecommendationId.ToString("N"),
                     MediaType = r.MediaType,
                     Name = r.ItemName,
                     DateRecommended = r.DateSentUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm"),
