@@ -66,6 +66,9 @@ namespace RecommendMe.UI.Recommend
                     {
                         var ui = (RecommendUI)this.ContentData;
                         ui.TargetUserChoices = RecommendViewBuilder.BuildTargetUserChoicesAsync(user).GetAwaiter().GetResult();
+                        var allowedTypes = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult().GloballyAllowedMediaTypes;
+                        ui.MediaTypeChoices = RecommendViewBuilder.BuildMediaTypeChoices(allowedTypes);
+                        ui.SelectedMediaTypes = string.Join(",", allowedTypes);
                     }
                 }
             }
@@ -91,6 +94,7 @@ namespace RecommendMe.UI.Recommend
                 if (incoming != null)
                 {
                     ui.SearchTerm = incoming.SearchTerm;
+                    ui.SelectedMediaTypes = incoming.SelectedMediaTypes ?? string.Empty;
                     ui.SelectedTargetUserName = incoming.SelectedTargetUserName;
                     ui.IsPrivate = incoming.IsPrivate;
                 }
@@ -144,9 +148,18 @@ namespace RecommendMe.UI.Recommend
             try
             {
                 ui.TargetUserChoices = RecommendViewBuilder.BuildTargetUserChoicesAsync(currentUser).GetAwaiter().GetResult();
-                var allowedTypes = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult().GloballyAllowedMediaTypes;
-                var results = this.searchService.Search(currentUser, ui.SearchTerm, allowedTypes);
+                var globallyAllowedTypes = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult().GloballyAllowedMediaTypes;
+                ui.MediaTypeChoices = RecommendViewBuilder.BuildMediaTypeChoices(globallyAllowedTypes);
+                var selectedTypes = (ui.SelectedMediaTypes ?? string.Empty)
+                    .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(type => type.Trim())
+                    .Where(type => globallyAllowedTypes.Contains(type))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
+                ui.SelectedMediaTypes = string.Join(",", selectedTypes);
+                var results = this.searchService.Search(currentUser, ui.SearchTerm, selectedTypes);
                 ui.SearchResults = RecommendViewBuilder.BuildSearchResults(results);
+                RecommendViewBuilder.SetSearchActionMessage(ui, results.Count);
                 ui.StatusMessage = new Emby.Web.GenericEdit.Elements.List.GenericItemList();
             }
             catch (Exception ex)

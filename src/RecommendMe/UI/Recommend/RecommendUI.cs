@@ -12,8 +12,8 @@ namespace RecommendMe.UI.Recommend
     /// View-model for the main "Search &amp; Recommend" page. Search results
     /// and the target-user list are rebuilt server-side on every postback;
     /// nothing here is persisted directly (see RecommendPageView for what
-    /// actually gets read back off SearchTerm / SelectedTargetUserName /
-    /// IsPrivate on submit).
+    /// actually gets read back off SearchTerm / SelectedMediaTypes /
+    /// SelectedTargetUserName / IsPrivate on submit).
     /// </summary>
     public class RecommendUI : EditableOptionsBase
     {
@@ -24,9 +24,28 @@ namespace RecommendMe.UI.Recommend
         public CaptionItem SearchHeading { get; set; } = new CaptionItem("Find something to recommend");
 
         [DisplayName("Search")]
-        [Description("Type a title and press Search.")]
-        [AutoPostBack(RecommendCommands.Search, nameof(SearchTerm))]
+        [Description("Type a title, choose the media types to include, then select Search.")]
         public string SearchTerm { get; set; } = string.Empty;
+
+        [DisplayName("Media types")]
+        [Description("Limit the search to one or more media types.")]
+        [EditMultilSelect]
+        [SelectItemsSource(nameof(MediaTypeChoices))]
+        public string SelectedMediaTypes { get; set; } = string.Empty;
+
+        [Browsable(false)]
+        public List<EditorSelectOption> MediaTypeChoices { get; set; } = new List<EditorSelectOption>();
+
+        public GenericItemList SearchAction { get; set; } = new GenericItemList
+        {
+            new GenericListItem
+            {
+                PrimaryText = "Search the library",
+                Icon = IconNames.search,
+                Status = ItemStatus.Succeeded,
+                Button1 = new ButtonItem("Search") { CommandId = RecommendCommands.Search }
+            }
+        };
 
         [DisplayName("Recommend to")]
         [SelectItemsSource(nameof(TargetUserChoices))]

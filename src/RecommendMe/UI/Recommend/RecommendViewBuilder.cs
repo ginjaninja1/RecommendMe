@@ -21,6 +21,56 @@ namespace RecommendMe.UI.Recommend
     /// </summary>
     internal static class RecommendViewBuilder
     {
+        public static List<EditorSelectOption> BuildMediaTypeChoices(IEnumerable<string> allowedMediaTypes)
+        {
+            return (allowedMediaTypes ?? Enumerable.Empty<string>())
+                .Distinct(System.StringComparer.Ordinal)
+                .Select(type => new EditorSelectOption(type, GetMediaTypeDisplayName(type)))
+                .ToList();
+        }
+
+        public static void SetSearchActionMessage(RecommendUI ui, int resultCount)
+        {
+            if (ui.SearchAction == null || ui.SearchAction.Count == 0)
+            {
+                ui.SearchAction = new RecommendUI().SearchAction;
+            }
+
+            if (resultCount > 0)
+            {
+                ui.SearchAction[0].SecondaryText = string.Empty;
+            }
+            else if (string.IsNullOrWhiteSpace(ui.SearchTerm))
+            {
+                ui.SearchAction[0].SecondaryText = "Enter a title to search your library.";
+            }
+            else if (string.IsNullOrWhiteSpace(ui.SelectedMediaTypes))
+            {
+                ui.SearchAction[0].SecondaryText = "Select at least one media type to search.";
+            }
+            else
+            {
+                ui.SearchAction[0].SecondaryText = $"No results found for ‘{ui.SearchTerm.Trim()}’. Try another title or broaden the media-type filter.";
+            }
+        }
+
+        private static string GetMediaTypeDisplayName(string type)
+        {
+            switch (type)
+            {
+                case RecommendableMediaTypes.Movie: return "Movies";
+                case RecommendableMediaTypes.Person: return "People";
+                case RecommendableMediaTypes.Series: return "TV series";
+                case RecommendableMediaTypes.Season: return "TV seasons";
+                case RecommendableMediaTypes.Episode: return "TV episodes";
+                case RecommendableMediaTypes.MusicArtist: return "Music artists";
+                case RecommendableMediaTypes.MusicAlbum: return "Music albums";
+                case RecommendableMediaTypes.Song: return "Songs";
+                case RecommendableMediaTypes.BoxSet: return "Collections";
+                default: return type;
+            }
+        }
+
         public static async Task<List<EditorSelectOption>> BuildTargetUserChoicesAsync(User currentUser)
         {
             var plugin = Plugin.Instance;
