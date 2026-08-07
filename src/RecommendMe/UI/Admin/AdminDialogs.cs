@@ -63,6 +63,7 @@ namespace RecommendMe.UI.Admin
             : base(pluginId, parent, rebuildParent, host, logger)
         {
             this.userId = userId;
+            this.AllowOk = true;
             this.Rebuild(new SendToUI());
         }
 
@@ -122,7 +123,11 @@ namespace RecommendMe.UI.Admin
 
         public override Task<IPluginUIView> RunCommand(string itemId, string commandId, string data)
         {
-            if (this.IsCancel(commandId)) return this.ReturnToParent();
+            if (this.IsCancel(commandId) || this.IsOk(commandId))
+            {
+                return this.ReturnToParent();
+            }
+
             var state = this.ReadState<SendToUI>(data);
 
             if (commandId == AdminCommands.SendToRefresh && Enum.TryParse(state.SelectedSendPolicy, out SendPolicyType policy))
@@ -243,7 +248,7 @@ namespace RecommendMe.UI.Admin
 
         public override Task<IPluginUIView> RunCommand(string itemId, string commandId, string data)
         {
-            if (this.IsCancel(commandId)) return this.ReturnToParent();
+            if (this.IsCancel(commandId) || this.IsOk(commandId)) return this.ReturnToParent();
             var state = this.ReadState<ReceiveFromUI>(data);
             var prefs = Plugin.Instance.UserPreferenceStore.GetForUserAsync(this.userId).GetAwaiter().GetResult();
             var changed = false;
@@ -340,7 +345,7 @@ namespace RecommendMe.UI.Admin
         }
         public override Task<IPluginUIView> RunCommand(string itemId, string commandId, string data)
         {
-            if (this.IsCancel(commandId)) return this.ReturnToParent();
+            if (this.IsCancel(commandId) || this.IsOk(commandId)) return this.ReturnToParent();
             var state = this.ReadState<UserGroupMembershipUI>(data);
             if (AdminCommands.TryGroup(commandId, out var userId, out var groupId) && userId == this.userId)
             {
@@ -418,7 +423,7 @@ namespace RecommendMe.UI.Admin
         }
         public override Task<IPluginUIView> RunCommand(string itemId, string commandId, string data)
         {
-            if (this.IsCancel(commandId)) return this.ReturnToParent();
+            if (this.IsCancel(commandId) || this.IsOk(commandId)) return this.ReturnToParent();
             var state = this.ReadState<DefaultUserPolicyUI>(data);
             if (AdminCommands.TrySelectDefault(commandId, out var userId))
             {
@@ -447,7 +452,7 @@ namespace RecommendMe.UI.Admin
             this.rebuildParent = rebuildParent;
             this.Serializer = host.Resolve<IJsonSerializer>();
             this.Logger = logger;
-            this.AllowOk = false;
+            this.AllowOk = true;
             this.AllowCancel = true;
         }
 
@@ -455,6 +460,7 @@ namespace RecommendMe.UI.Admin
         protected string UserName(long id) => Plugin.Instance.GetAllUsers().FirstOrDefault(u => u.InternalId == id)?.Name ?? id.ToString();
         protected T ReadState<T>(string data) where T : class => string.IsNullOrEmpty(data) ? (T)this.ContentData : this.Serializer.DeserializeFromString<T>(data) ?? (T)this.ContentData;
         protected bool IsCancel(string command) => string.Equals(command, "DialogCancel", StringComparison.OrdinalIgnoreCase);
+        protected bool IsOk(string command) => string.Equals(command, "DialogOk", StringComparison.OrdinalIgnoreCase);
         protected Task<IPluginUIView> ReturnToParent() { this.rebuildParent(); return Task.FromResult(this.parent); }
         protected static void Toggle<T>(List<T> values, T value) { if (values.Contains(value)) values.Remove(value); else values.Add(value); }
         public override Task OnOkCommand(string providerId, string commandId, string data) => Task.CompletedTask;

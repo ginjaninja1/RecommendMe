@@ -11,6 +11,7 @@ namespace RecommendMe.UIBaseClasses.Views
         {
             this.AllowCancel = true;
             this.AllowOk = true;
+            this.OKButtonCaption = "OK";
         }
 
         public bool AllowCancel { get; set; }

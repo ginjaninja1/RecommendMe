@@ -97,13 +97,54 @@ namespace RecommendMe.UI.Admin
             }
             else if (GroupsCommands.TryDelete(commandId, out var deleteGroupId))
             {
-                return Task.FromResult<IPluginUIView>(new DeleteGroupDialogView(
-                    this.PluginId,
-                    deleteGroupId,
-                    this,
-                    () => this.Rebuild((GroupsUI)this.ContentData),
-                    this.applicationHost,
-                    this.logger));
+                var settings = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult();
+                var group = settings.Groups.FirstOrDefault(g => g.Id == deleteGroupId);
+                if (group != null && group.MemberUserIds.Count == 0)
+                {
+                    var deleted = false;
+                    var nowHasMembers = false;
+                    Plugin.Instance.AdminSettingsStore.MutateAsync(s =>
+                    {
+                        var currentGroup = s.Groups.FirstOrDefault(g => g.Id == deleteGroupId);
+                        if (currentGroup == null)
+                        {
+                            deleted = true;
+                            return;
+                        }
+                        if (currentGroup.MemberUserIds.Count != 0)
+                        {
+                            nowHasMembers = true;
+                            return;
+                        }
+                        deleted = s.Groups.Remove(currentGroup);
+                    }).GetAwaiter().GetResult();
+
+                    if (deleted)
+                    {
+                        this.logger.Info("RecommendMe: deleted empty group '{0}' ({1}) without confirmation", group.Name, group.Id);
+                        changed = true;
+                    }
+                    else if (nowHasMembers)
+                    {
+                        return Task.FromResult<IPluginUIView>(new DeleteGroupDialogView(
+                            this.PluginId,
+                            deleteGroupId,
+                            this,
+                            () => this.Rebuild((GroupsUI)this.ContentData),
+                            this.applicationHost,
+                            this.logger));
+                    }
+                }
+                else if (group != null)
+                {
+                    return Task.FromResult<IPluginUIView>(new DeleteGroupDialogView(
+                        this.PluginId,
+                        deleteGroupId,
+                        this,
+                        () => this.Rebuild((GroupsUI)this.ContentData),
+                        this.applicationHost,
+                        this.logger));
+                }
             }
 
             if (changed) this.logger.Info("RecommendMe: groups updated (command '{0}')", commandId);

@@ -53,7 +53,7 @@ namespace RecommendMe.UI.Admin
             this.logger = logger;
             this.serializer = host.Resolve<IJsonSerializer>();
             this.groupName = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult().Groups.First(g => g.Id == groupId).Name;
-            this.AllowOk = false;
+            this.AllowOk = true;
             this.AllowCancel = true;
             this.Rebuild(new GroupMembersUI());
         }
@@ -105,7 +105,8 @@ namespace RecommendMe.UI.Admin
                 }).GetAwaiter().GetResult();
                 this.logger.Info("RecommendMe: toggled user {0} membership in group '{1}' ({2})", userId, this.groupName, this.groupId);
             }
-            else if (string.Equals(commandId, "DialogCancel", StringComparison.OrdinalIgnoreCase))
+            else if (string.Equals(commandId, "DialogCancel", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(commandId, "DialogOk", StringComparison.OrdinalIgnoreCase))
             {
                 this.logger.Info("RecommendMe: group membership dialog closed for '{0}' ({1})", this.groupName, this.groupId);
                 this.rebuildParentContent();
@@ -157,7 +158,7 @@ namespace RecommendMe.UI.Admin
             var group = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult().Groups.First(g => g.Id == groupId);
             this.currentName = group.Name;
             this.ContentData = new RenameGroupUI { Name = group.Name };
-            this.AllowOk = false;
+            this.AllowOk = true;
             this.AllowCancel = true;
         }
         public override string Caption => "Rename: " + this.currentName;
@@ -211,9 +212,10 @@ namespace RecommendMe.UI.Admin
                 }
             }
 
-            if (string.Equals(commandId, "DialogCancel", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(commandId, "DialogCancel", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(commandId, "DialogOk", StringComparison.OrdinalIgnoreCase))
             {
-                this.logger.Info("RecommendMe: group rename cancelled for '{0}' ({1})", this.currentName, this.groupId);
+                this.logger.Info("RecommendMe: group rename dialog closed for '{0}' ({1})", this.currentName, this.groupId);
                 this.rebuildParentContent();
                 return Task.FromResult(this.parentPageView);
             }
@@ -229,7 +231,10 @@ namespace RecommendMe.UI.Admin
         public string Title { get; set; }
         public override string EditorTitle => null;
         public override string EditorDescription => null;
+        public CaptionItem ImpactNotice { get; set; } = new CaptionItem("This group is currently assigned to the following users. Deleting it removes the group from their recommendation access settings; it does not delete the users.");
+        public GenericItemList CurrentMembers { get; set; } = new GenericItemList();
         [DisplayName("Group name confirmation")]
+        [Description("Enter the group name to confirm deletion.")]
         public string Confirmation { get; set; } = string.Empty;
         public ButtonItem DeleteButton { get; set; } = new ButtonItem("Delete Group")
         {
@@ -260,13 +265,34 @@ namespace RecommendMe.UI.Admin
             this.rebuildParentContent = rebuildParentContent;
             this.logger = logger;
             this.serializer = host.Resolve<IJsonSerializer>();
-            this.groupName = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult().Groups.First(g => g.Id == groupId).Name;
-            this.ContentData = new DeleteGroupUI { Title = $"Delete {this.groupName}" };
-            this.AllowOk = false;
+            var group = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult().Groups.First(g => g.Id == groupId);
+            this.groupName = group.Name;
+            this.ContentData = this.BuildContent(group.MemberUserIds.ToArray());
+            this.AllowOk = true;
             this.AllowCancel = true;
         }
         public override string Caption => "Delete: " + this.groupName;
         public override Task OnOkCommand(string providerId, string commandId, string data) => Task.CompletedTask;
+
+        private DeleteGroupUI BuildContent(long[] memberUserIds, string validationMessage = null)
+        {
+            var memberIds = memberUserIds ?? Array.Empty<long>();
+            return new DeleteGroupUI
+            {
+                Title = $"Delete {this.groupName}",
+                CurrentMembers = new GenericItemList(Plugin.Instance.GetAllUsers()
+                    .Where(user => memberIds.Contains(user.InternalId))
+                    .OrderBy(user => user.Name)
+                    .Select(user => new GenericListItem
+                    {
+                        PrimaryText = user.Name,
+                        SecondaryText = "Current member",
+                        Icon = IconNames.person
+                    })),
+                ValidationStatus = new CaptionItem(validationMessage ?? string.Empty)
+            };
+        }
+
         public override Task<IPluginUIView> RunCommand(string itemId, string commandId, string data)
         {
             this.logger.Info("RecommendMe: DeleteGroupDialog command '{0}' for group '{1}' ({2})", commandId ?? "(null)", this.groupName, this.groupId);
@@ -284,11 +310,8 @@ namespace RecommendMe.UI.Admin
                     }
 
                     this.logger.Info("RecommendMe: delete confirmation did not match group '{0}'", this.groupName);
-                    this.ContentData = new DeleteGroupUI
-                    {
-                        Title = $"Delete {this.groupName}",
-                        ValidationStatus = new CaptionItem("✗ Name did not match — try again")
-                    };
+                    var group = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult().Groups.FirstOrDefault(g => g.Id == this.groupId);
+                    this.ContentData = this.BuildContent(group?.MemberUserIds.ToArray(), "✗ Name did not match — try again");
                     this.RaiseUIViewInfoChanged();
                     return Task.FromResult<IPluginUIView>(this);
                 }
@@ -299,9 +322,10 @@ namespace RecommendMe.UI.Admin
                 }
             }
 
-            if (string.Equals(commandId, "DialogCancel", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(commandId, "DialogCancel", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(commandId, "DialogOk", StringComparison.OrdinalIgnoreCase))
             {
-                this.logger.Info("RecommendMe: group delete cancelled for '{0}' ({1})", this.groupName, this.groupId);
+                this.logger.Info("RecommendMe: group delete dialog closed for '{0}' ({1})", this.groupName, this.groupId);
                 this.rebuildParentContent();
                 return Task.FromResult(this.parentPageView);
             }
