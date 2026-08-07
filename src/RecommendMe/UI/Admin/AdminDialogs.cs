@@ -212,18 +212,22 @@ namespace RecommendMe.UI.Admin
                 var blocked = preference?.Blocked ?? false;
                 var optedOut = preference?.OptedOutMediaTypes ?? new List<string>();
                 var mediaItems = new GenericItemList();
-                foreach (var mediaType in RecommendableMediaTypes.All.Where(settings.GloballyAllowedMediaTypes.Contains))
+                foreach (var mediaType in RecommendableMediaTypes.All)
                 {
                     var receive = !optedOut.Contains(mediaType);
+                    var centrallyEnabled = settings.GloballyAllowedMediaTypes.Contains(mediaType);
                     mediaItems.Add(new GenericListItem
                     {
                         PrimaryText = mediaType,
+                        SecondaryText = centrallyEnabled ? null : "Centrally disabled",
                         Icon = global::RecommendMe.UI.Recommend.RecommendViewBuilder.GetIcon(mediaType),
-                        Status = receive ? ItemStatus.Succeeded : ItemStatus.Unavailable,
+                        Status = centrallyEnabled && receive
+                            ? ItemStatus.Succeeded
+                            : ItemStatus.Unavailable,
                         Toggle = new ToggleButtonItem("Receive")
                         {
                             IsChecked = receive && !blocked,
-                            IsEnabled = !blocked,
+                            IsEnabled = centrallyEnabled && !blocked,
                             CommandId = AdminCommands.ReceiveMedia(this.userId, sender.InternalId, mediaType)
                         }
                     });
@@ -260,9 +264,13 @@ namespace RecommendMe.UI.Admin
             }
             else if (AdminCommands.TryReceiveMedia(commandId, out ownerId, out senderId, out var mediaType) && ownerId == this.userId)
             {
-                var pref = GetPreference(prefs, senderId);
-                if (!pref.Blocked) Toggle(pref.OptedOutMediaTypes, mediaType);
-                changed = !pref.Blocked;
+                var settings = this.Settings();
+                if (settings.GloballyAllowedMediaTypes.Contains(mediaType))
+                {
+                    var pref = GetPreference(prefs, senderId);
+                    if (!pref.Blocked) Toggle(pref.OptedOutMediaTypes, mediaType);
+                    changed = !pref.Blocked;
+                }
             }
             if (changed)
             {

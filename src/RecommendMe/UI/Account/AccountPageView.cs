@@ -84,6 +84,17 @@ namespace RecommendMe.UI.Account
             }
             else if (AccountCommands.TryParse(commandId, out var senderUserId, out var mediaType))
             {
+                var settings = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult();
+                if (!settings.GloballyAllowedMediaTypes.Contains(mediaType))
+                {
+                    // Centrally disabled media types remain visible so users can
+                    // understand the effective policy, but their saved choice is
+                    // read-only until an administrator enables the type again.
+                    this.ContentData = AccountViewBuilder.BuildAsync(currentUser).GetAwaiter().GetResult();
+                    this.RaiseUIViewInfoChanged();
+                    return Task.FromResult<IPluginUIView>(this);
+                }
+
                 var prefs = Plugin.Instance.UserPreferenceStore.GetForUserAsync(currentUser.InternalId).GetAwaiter().GetResult();
 
                 var senderPref = prefs.SenderPreferences.FirstOrDefault(p => p.SenderUserId == senderUserId);

@@ -46,18 +46,22 @@ namespace RecommendMe.UI.Account
                     var isBlocked = existingPref?.Blocked ?? false;
 
                     var subItems = new GenericItemList();
-                    foreach (var mediaType in RecommendMe.Models.RecommendableMediaTypes.All.Where(settings.GloballyAllowedMediaTypes.Contains))
+                    foreach (var mediaType in RecommendMe.Models.RecommendableMediaTypes.All)
                     {
                         var isOptedIn = !optedOut.Contains(mediaType);
+                        var isCentrallyEnabled = settings.GloballyAllowedMediaTypes.Contains(mediaType);
                         subItems.Add(new GenericListItem
                         {
                             PrimaryText = mediaType,
+                            SecondaryText = isCentrallyEnabled ? null : "Centrally disabled",
                             Icon = global::RecommendMe.UI.Recommend.RecommendViewBuilder.GetIcon(mediaType),
-                            Status = isBlocked ? ItemStatus.Unavailable : (isOptedIn ? ItemStatus.Succeeded : ItemStatus.Unavailable),
+                            Status = !isCentrallyEnabled || isBlocked || !isOptedIn
+                                ? ItemStatus.Unavailable
+                                : ItemStatus.Succeeded,
                             Toggle = new ToggleButtonItem("Receive")
                             {
                                 IsChecked = isOptedIn && !isBlocked,
-                                IsEnabled = !isBlocked,
+                                IsEnabled = isCentrallyEnabled && !isBlocked,
                                 CommandId = AccountCommands.BuildOptOutToggle(candidate.InternalId, mediaType)
                             }
                         });
