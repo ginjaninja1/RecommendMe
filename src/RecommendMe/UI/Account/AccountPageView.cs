@@ -23,10 +23,36 @@ namespace RecommendMe.UI.Account
             this.ShowBack = false;
 
             // As with RecommendPageView: this.User isn't populated until
-            // after construction, so start with an empty view-model and
-            // build the real (user-specific) content the first time we have
-            // a user - see RunCommand.
+            // after construction. ContentData is fully rebuilt as soon as
+            // it is, via the User override below - so this empty
+            // view-model is only ever shown for the instant between
+            // construction and that assignment.
             this.ContentData = new AccountUI();
+        }
+
+        /// <summary>
+        /// Builds the real (user-specific) sender list the moment the
+        /// framework assigns the browsing user - see
+        /// PageControllerHostBase.GetUIView. This is what lets the Account
+        /// tab show real content on first navigation, no "Load" click
+        /// required.
+        /// </summary>
+        public override MediaBrowser.Model.Dto.UserDto User
+        {
+            get => base.User;
+            set
+            {
+                base.User = value;
+
+                if (value != null)
+                {
+                    var user = Plugin.Instance.UserManager.GetUserById(value.Id);
+                    if (user != null)
+                    {
+                        this.ContentData = AccountViewBuilder.BuildAsync(user).GetAwaiter().GetResult();
+                    }
+                }
+            }
         }
 
         private User CurrentUser =>
@@ -40,7 +66,23 @@ namespace RecommendMe.UI.Account
                 return Task.FromResult<IPluginUIView>(this);
             }
 
-            if (AccountCommands.TryParse(commandId, out var senderUserId, out var mediaType))
+            if (AccountCommands.TryParseBlock(commandId, out var blockedSenderUserId))
+            {
+                var prefs = Plugin.Instance.UserPreferenceStore.GetForUserAsync(currentUser.InternalId).GetAwaiter().GetResult();
+
+                var senderPref = prefs.SenderPreferences.FirstOrDefault(p => p.SenderUserId == blockedSenderUserId);
+                if (senderPref == null)
+                {
+                    senderPref = new SenderPreference { SenderUserId = blockedSenderUserId };
+                    prefs.SenderPreferences.Add(senderPref);
+                }
+
+                senderPref.Blocked = !senderPref.Blocked;
+
+                prefs.UserId = currentUser.InternalId;
+                Plugin.Instance.UserPreferenceStore.SaveForUserAsync(prefs).GetAwaiter().GetResult();
+            }
+            else if (AccountCommands.TryParse(commandId, out var senderUserId, out var mediaType))
             {
                 var prefs = Plugin.Instance.UserPreferenceStore.GetForUserAsync(currentUser.InternalId).GetAwaiter().GetResult();
 

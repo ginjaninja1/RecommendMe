@@ -47,6 +47,30 @@ namespace RecommendMe.UI.Recommend
             this.ContentData = new RecommendUI();
         }
 
+        /// <summary>
+        /// Populates the target-user dropdown the moment the framework
+        /// assigns the real browsing user (see PageControllerHostBase.GetUIView),
+        /// rather than leaving it empty until the first Search/postback.
+        /// </summary>
+        public override MediaBrowser.Model.Dto.UserDto User
+        {
+            get => base.User;
+            set
+            {
+                base.User = value;
+
+                if (value != null)
+                {
+                    var user = Plugin.Instance.UserManager.GetUserById(value.Id);
+                    if (user != null)
+                    {
+                        var ui = (RecommendUI)this.ContentData;
+                        ui.TargetUserChoices = RecommendViewBuilder.BuildTargetUserChoicesAsync(user).GetAwaiter().GetResult();
+                    }
+                }
+            }
+        }
+
         /// <summary>Resolves the browsing user from the framework-assigned UserDto. Only valid inside RunCommand.</summary>
         private User CurrentUser =>
             this.User != null ? Plugin.Instance.UserManager.GetUserById(this.User.Id) : null;
@@ -135,6 +159,8 @@ namespace RecommendMe.UI.Recommend
                 {
                     RecommendationResult.Success => RecommendViewBuilder.BuildStatusMessage($"Recommended \"{item.Name}\" to {targetUser.Name}.", true),
                     RecommendationResult.NotPermitted => RecommendViewBuilder.BuildStatusMessage("You don't have permission to recommend this to that user.", false),
+                    RecommendationResult.RecipientBlockedSender => RecommendViewBuilder.BuildStatusMessage($"Recommendation dropped - {targetUser.Name} is not accepting recommendations from you.", false),
+                    RecommendationResult.RecipientOptedOutMediaType => RecommendViewBuilder.BuildStatusMessage($"Recommendation dropped - {targetUser.Name} is not accepting {mediaType} recommendations from you.", false),
                     RecommendationResult.AlreadyWatchedByRecipient => RecommendViewBuilder.BuildStatusMessage($"{targetUser.Name} has already watched this.", false),
                     RecommendationResult.AlreadyActiveRecommendation => RecommendViewBuilder.BuildStatusMessage($"{targetUser.Name} already has an active recommendation for this item.", false),
                     _ => RecommendViewBuilder.BuildStatusMessage("Something went wrong.", false)

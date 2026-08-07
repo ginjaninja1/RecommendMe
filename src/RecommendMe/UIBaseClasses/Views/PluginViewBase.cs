@@ -36,7 +36,12 @@ namespace RecommendMe.UIBaseClasses.Views
             }
         }
 
-        public UserDto User { get; set; }
+        // Virtual so page views can hook the moment the framework assigns
+        // the real browsing user (see PageControllerHostBase.GetUIView:
+        // this happens AFTER CreateDefaultPageView, so it's the only place
+        // a page view can react to "I now know who's viewing me" without
+        // requiring an explicit user click/postback first).
+        public virtual UserDto User { get; set; }
 
         public string RedirectViewUrl { get; set; }
 

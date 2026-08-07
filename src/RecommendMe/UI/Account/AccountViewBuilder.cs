@@ -38,6 +38,7 @@ namespace RecommendMe.UI.Account
 
                     var existingPref = preferences.SenderPreferences.FirstOrDefault(p => p.SenderUserId == candidate.InternalId);
                     var optedOut = existingPref?.OptedOutMediaTypes ?? new System.Collections.Generic.List<string>();
+                    var isBlocked = existingPref?.Blocked ?? false;
 
                     var subItems = new GenericItemList();
                     foreach (var mediaType in settings.GloballyAllowedMediaTypes)
@@ -49,7 +50,8 @@ namespace RecommendMe.UI.Account
                             Status = isOptedIn ? ItemStatus.Succeeded : ItemStatus.Unavailable,
                             Toggle = new ToggleButtonItem("Receive")
                             {
-                                IsChecked = isOptedIn,
+                                IsChecked = isOptedIn && !isBlocked,
+                                IsEnabled = !isBlocked,
                                 CommandId = AccountCommands.BuildOptOutToggle(candidate.InternalId, mediaType)
                             }
                         });
@@ -58,6 +60,12 @@ namespace RecommendMe.UI.Account
                     senderList.Add(new GenericListItem
                     {
                         PrimaryText = candidate.Name,
+                        Status = isBlocked ? ItemStatus.Failed : ItemStatus.Succeeded,
+                        Toggle = new ToggleButtonItem("Accept recommendations")
+                        {
+                            IsChecked = !isBlocked,
+                            CommandId = AccountCommands.BuildBlockToggle(candidate.InternalId)
+                        },
                         SubItems = subItems
                     });
                 }

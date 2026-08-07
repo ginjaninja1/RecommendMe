@@ -7,6 +7,22 @@ using RecommendMe.Storage;
 namespace RecommendMe.Services
 {
     /// <summary>
+    /// Why a send was or wasn't permitted. AdminBlocked covers every
+    /// server-wide/admin-matrix reason (unsupported media type, Emergency
+    /// Revocation, SendMode) - these are intentionally not detailed further
+    /// to the sender, since they're the admin's policy, not the recipient's.
+    /// The Recipient* values are the recipient's own Account-tab choice, and
+    /// are surfaced back to the sender by name (see RecommendPageView).
+    /// </summary>
+    public enum SendPermissionResult
+    {
+        Allowed,
+        AdminBlocked,
+        RecipientBlockedSender,
+        RecipientOptedOutMediaType
+    }
+
+    /// <summary>
     /// Resolves whether a source user may send a recommendation of a given
     /// media type to a target user. Combines the admin-configured global
     /// media type list, the sender's own SendMode/AllowedTargetUserIds
@@ -18,7 +34,8 @@ namespace RecommendMe.Services
     /// 1. GloballyAllowedMediaTypes (server-wide - the type must be offerable at all)
     /// 2. AccessSuspended on either side (Emergency Revocation)
     /// 3. Source's SendMode (Everyone / NoOne / SpecificUsers allow-list)
-    /// 4. Recipient's own opt-out of this specific sender/media-type
+    /// 4. Recipient's own master Blocked switch for this sender
+    /// 5. Recipient's own opt-out of this specific sender/media-type
     /// </summary>
     public class PermissionService
     {
@@ -81,13 +98,13 @@ namespace RecommendMe.Services
             return created;
         }
 
-        public async Task<bool> CanSendAsync(User source, User target, string mediaType)
+        public async Task<SendPermissionResult> CanSendAsync(User source, User target, string mediaType)
         {
             var settings = await this.adminSettingsStore.GetAsync().ConfigureAwait(false);
 
             if (!settings.GloballyAllowedMediaTypes.Contains(mediaType))
             {
-                return false;
+                return SendPermissionResult.AdminBlocked;
             }
 
             var sourceEntry = await this.EnsureUserAccessEntryAsync(source).ConfigureAwait(false);
@@ -95,28 +112,34 @@ namespace RecommendMe.Services
 
             if (sourceEntry.AccessSuspended || targetEntry.AccessSuspended)
             {
-                return false;
+                return SendPermissionResult.AdminBlocked;
             }
 
             if (source.InternalId == target.InternalId)
             {
                 // Self-recommendation always allowed once basic access exists (i.e. not suspended).
-                return true;
+                return SendPermissionResult.Allowed;
             }
 
             if (!IsTargetAllowed(sourceEntry, target.InternalId))
             {
-                return false;
+                return SendPermissionResult.AdminBlocked;
             }
 
             var preferences = await this.userPreferenceStore.GetForUserAsync(target.InternalId).ConfigureAwait(false);
             var senderPref = preferences.SenderPreferences.FirstOrDefault(p => p.SenderUserId == source.InternalId);
-            if (senderPref != null && senderPref.OptedOutMediaTypes.Contains(mediaType))
+
+            if (senderPref != null && senderPref.Blocked)
             {
-                return false;
+                return SendPermissionResult.RecipientBlockedSender;
             }
 
-            return true;
+            if (senderPref != null && senderPref.OptedOutMediaTypes.Contains(mediaType))
+            {
+                return SendPermissionResult.RecipientOptedOutMediaType;
+            }
+
+            return SendPermissionResult.Allowed;
         }
 
         /// <summary>

@@ -19,18 +19,19 @@ namespace RecommendMe.UI.Account
         public CaptionItem SendersHeading { get; set; } = new CaptionItem("Senders You Can Receive From");
 
         /// <summary>
-        /// Present because this.User (the browsing user) is not available
-        /// until after this view-model's first RunCommand call - see
-        /// AccountPageView. Tapping this triggers the initial load.
+        /// The sender list now loads automatically as soon as the page
+        /// knows who's viewing it (see AccountPageView's User override).
+        /// This button stays as a manual re-sync - e.g. if another user
+        /// changes their SendMode/media-type list while this tab is open.
         /// </summary>
         public GenericItemList LoadButton { get; set; } = new GenericItemList
         {
             new GenericListItem
             {
-                PrimaryText = "Load My Senders",
+                PrimaryText = "Refresh",
                 Icon = IconNames.refresh,
                 Status = ItemStatus.Succeeded,
-                Button1 = new ButtonItem("Load") { CommandId = "load" }
+                Button1 = new ButtonItem("Refresh") { CommandId = "load" }
             }
         };
 

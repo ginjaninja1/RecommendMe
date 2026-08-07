@@ -11,6 +11,8 @@ namespace RecommendMe.Services
     {
         Success,
         NotPermitted,
+        RecipientBlockedSender,
+        RecipientOptedOutMediaType,
         AlreadyWatchedByRecipient,
         AlreadyActiveRecommendation
     }
@@ -61,10 +63,15 @@ namespace RecommendMe.Services
             string mediaType,
             bool isPrivate)
         {
-            var permitted = await this.permissionService.CanSendAsync(sender, recipient, mediaType).ConfigureAwait(false);
-            if (!permitted)
+            var permission = await this.permissionService.CanSendAsync(sender, recipient, mediaType).ConfigureAwait(false);
+            switch (permission)
             {
-                return RecommendationResult.NotPermitted;
+                case SendPermissionResult.AdminBlocked:
+                    return RecommendationResult.NotPermitted;
+                case SendPermissionResult.RecipientBlockedSender:
+                    return RecommendationResult.RecipientBlockedSender;
+                case SendPermissionResult.RecipientOptedOutMediaType:
+                    return RecommendationResult.RecipientOptedOutMediaType;
             }
 
             var recipientData = this.userDataManager.GetUserData(recipient, item);

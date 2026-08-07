@@ -14,6 +14,13 @@ namespace RecommendMe.Models
 
         public string SenderUserName { get; set; }
 
+        /// <summary>
+        /// Master off-switch for this sender, independent of
+        /// OptedOutMediaTypes. True = block everything from this sender,
+        /// regardless of which media types are otherwise opted in.
+        /// </summary>
+        public bool Blocked { get; set; }
+
         /// <summary>Media types this user has explicitly opted OUT of receiving from this sender.</summary>
         public List<string> OptedOutMediaTypes { get; set; } = new List<string>();
     }
