@@ -1,7 +1,11 @@
 ﻿using System.Threading.Tasks;
 using MediaBrowser.Controller.Collections;
+using System;
+using System.Linq;
+using System.Threading;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Persistence;
 using MediaBrowser.Model.Logging;
 using RecommendMe.Storage;
 
@@ -21,6 +25,7 @@ namespace RecommendMe.Services
         private readonly ILibraryManager libraryManager;
         private readonly CollectionRegistryStore registryStore;
         private readonly ILogger logger;
+        private readonly SemaphoreSlim collectionGate = new SemaphoreSlim(1, 1);
 
         public CollectionSyncService(
             ICollectionManager collectionManager,
@@ -34,7 +39,14 @@ namespace RecommendMe.Services
             this.logger = logger;
         }
 
-        private static string CollectionNameFor(User user) => $"_Recommended_{user.Name}";
+        public static string CollectionNameFor(User user, string prefix, string suffix) =>
+            (prefix ?? string.Empty) + user.Name + (suffix ?? string.Empty);
+
+        private static string PublicId(BoxSet collection) => collection.Id.ToString("N");
+
+        private static bool RegistryIdentityMatches(CollectionRegistryEntry entry, BoxSet collection) =>
+            string.IsNullOrEmpty(entry.EmbyCollectionId)
+            || string.Equals(entry.EmbyCollectionId, PublicId(collection), StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
         /// Gets the recipient's recommendation collection, creating it (and
@@ -52,22 +64,40 @@ namespace RecommendMe.Services
         /// </param>
         public async Task<BoxSet> GetOrCreateCollectionAsync(User recipient, BaseItem seedItem)
         {
-            var existingId = await this.registryStore.GetCollectionIdAsync(recipient.InternalId).ConfigureAwait(false);
-            if (existingId.HasValue)
+            await this.collectionGate.WaitAsync().ConfigureAwait(false);
+            try
             {
-                var existingItem = this.libraryManager.GetItemById(existingId.Value) as BoxSet;
-                if (existingItem != null)
+                return await this.GetOrCreateCollectionCoreAsync(recipient, seedItem).ConfigureAwait(false);
+            }
+            finally
+            {
+                this.collectionGate.Release();
+            }
+        }
+
+        private async Task<BoxSet> GetOrCreateCollectionCoreAsync(User recipient, BaseItem seedItem)
+        {
+            var registryEntry = await this.registryStore.GetAsync(recipient.InternalId).ConfigureAwait(false);
+            if (registryEntry != null)
+            {
+                var existingItem = this.libraryManager.GetItemById(registryEntry.CollectionId) as BoxSet;
+                if (existingItem != null && RegistryIdentityMatches(registryEntry, existingItem))
                 {
+                    if (string.IsNullOrEmpty(registryEntry.EmbyCollectionId))
+                    {
+                        await this.registryStore.RegisterAsync(recipient.InternalId, existingItem.InternalId, existingItem.Name, PublicId(existingItem)).ConfigureAwait(false);
+                    }
                     return existingItem;
                 }
 
                 this.logger.Warn(
                     "RecommendMe: registered collection id {0} for user {1} no longer resolves to a BoxSet; recreating.",
-                    existingId.Value,
+                    registryEntry.CollectionId,
                     recipient.Name);
             }
 
-            var name = CollectionNameFor(recipient);
+            var settings = await Plugin.Instance.AdminSettingsStore.GetAsync().ConfigureAwait(false);
+            var name = CollectionNameFor(recipient, settings.RecommendationCollectionPrefix, settings.RecommendationCollectionSuffix);
 
             var created = await this.collectionManager.CreateCollection(new CollectionCreationOptions
             {
@@ -84,9 +114,59 @@ namespace RecommendMe.Services
                     $"RecommendMe: CreateCollection returned no BoxSet for '{name}' (seed item {seedItem.InternalId}).");
             }
 
-            await this.registryStore.RegisterAsync(recipient.InternalId, created.InternalId, name).ConfigureAwait(false);
+            await this.registryStore.RegisterAsync(recipient.InternalId, created.InternalId, name, PublicId(created)).ConfigureAwait(false);
 
             return created;
+        }
+
+        /// <summary>Renames only registered collections that already exist; it never creates missing collections.</summary>
+        public async Task<CollectionRenameResult> RenameInstantiatedCollectionsAsync(string prefix, string suffix)
+        {
+            await this.collectionGate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                return await this.RenameInstantiatedCollectionsCoreAsync(prefix, suffix).ConfigureAwait(false);
+            }
+            finally
+            {
+                this.collectionGate.Release();
+            }
+        }
+
+        private async Task<CollectionRenameResult> RenameInstantiatedCollectionsCoreAsync(string prefix, string suffix)
+        {
+            var result = new CollectionRenameResult();
+            var entries = await this.registryStore.GetAllAsync().ConfigureAwait(false);
+            var users = Plugin.Instance.GetAllUsers().ToDictionary(u => u.InternalId);
+
+            foreach (var entry in entries)
+            {
+                if (!users.TryGetValue(entry.UserId, out var user))
+                {
+                    result.Skipped++;
+                    continue;
+                }
+
+                var collection = this.libraryManager.GetItemById(entry.CollectionId) as BoxSet;
+                if (collection == null || !RegistryIdentityMatches(entry, collection))
+                {
+                    result.Skipped++;
+                    this.logger.Warn("RecommendMe: skipped renaming registered collection {0}; its identity no longer matches.", entry.CollectionId);
+                    continue;
+                }
+
+                var newName = CollectionNameFor(user, prefix, suffix);
+                if (!string.Equals(collection.Name, newName, StringComparison.Ordinal))
+                {
+                    collection.Name = newName;
+                    this.libraryManager.UpdateItem(collection, collection.GetParent(), ItemUpdateType.MetadataEdit, null);
+                    result.Renamed++;
+                }
+
+                await this.registryStore.RegisterAsync(entry.UserId, collection.InternalId, newName, PublicId(collection)).ConfigureAwait(false);
+            }
+
+            return result;
         }
 
         public async Task AddItemAsync(User recipient, BaseItem item)
@@ -109,14 +189,14 @@ namespace RecommendMe.Services
 
         public async Task RemoveItemAsync(User recipient, long itemId)
         {
-            var collectionId = await this.registryStore.GetCollectionIdAsync(recipient.InternalId).ConfigureAwait(false);
-            if (!collectionId.HasValue)
+            var entry = await this.registryStore.GetAsync(recipient.InternalId).ConfigureAwait(false);
+            if (entry == null)
             {
                 return;
             }
 
-            var collection = this.libraryManager.GetItemById(collectionId.Value) as BoxSet;
-            if (collection == null)
+            var collection = this.libraryManager.GetItemById(entry.CollectionId) as BoxSet;
+            if (collection == null || !RegistryIdentityMatches(entry, collection))
             {
                 return;
             }
@@ -136,8 +216,8 @@ namespace RecommendMe.Services
         /// </summary>
         public async Task<bool> IsItemInRecipientCollectionAsync(User recipient, long itemId)
         {
-            var collectionId = await this.registryStore.GetCollectionIdAsync(recipient.InternalId).ConfigureAwait(false);
-            if (!collectionId.HasValue)
+            var entry = await this.registryStore.GetAsync(recipient.InternalId).ConfigureAwait(false);
+            if (entry == null)
             {
                 this.logger.Debug(
                     "RecommendMe: {0} has no recommendation collection yet; item {1} cannot be a member.",
@@ -146,9 +226,16 @@ namespace RecommendMe.Services
                 return false;
             }
 
+            var collection = this.libraryManager.GetItemById(entry.CollectionId) as BoxSet;
+            if (collection == null || !RegistryIdentityMatches(entry, collection))
+            {
+                this.logger.Warn("RecommendMe: collection registry identity mismatch for user {0}.", recipient.Name);
+                return false;
+            }
+
             var matchingIds = this.libraryManager.GetInternalItemIds(new MediaBrowser.Controller.Entities.InternalItemsQuery
             {
-                CollectionIds = new[] { collectionId.Value },
+                CollectionIds = new[] { entry.CollectionId },
                 ItemIds = new[] { itemId }
             });
 
@@ -158,10 +245,16 @@ namespace RecommendMe.Services
                 "RecommendMe: membership check - item {0} in {1}'s collection {2}: {3}.",
                 itemId,
                 recipient.Name,
-                collectionId.Value,
+                entry.CollectionId,
                 isMember);
 
             return isMember;
         }
+    }
+
+    public class CollectionRenameResult
+    {
+        public int Renamed { get; set; }
+        public int Skipped { get; set; }
     }
 }

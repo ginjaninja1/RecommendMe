@@ -88,6 +88,8 @@ namespace RecommendMe.Models
     /// </summary>
     public class AdminSettings
     {
+        public const string DefaultRecommendationCollectionPrefix = "_Recommended_";
+
         /// <summary>
         /// Server-wide media types the Recommend UI is allowed to offer at all.
         /// This is NOT a per-user access control - it exists purely so the
@@ -108,6 +110,16 @@ namespace RecommendMe.Models
         /// page. Disable it on large configurations to require a search term.
         /// </summary>
         public bool AlwaysExpandUsersAndGroups { get; set; } = true;
+
+        /// <summary>Whether watched recommendations are removed automatically. Off by default.</summary>
+        public bool ClearWatchedRecommendations { get; set; } = false;
+
+        /// <summary>Whether items already watched by the recipient are blocked from being recommended.</summary>
+        public bool PreventWatchedRecommendations { get; set; } = true;
+
+        public string RecommendationCollectionPrefix { get; set; } = DefaultRecommendationCollectionPrefix;
+
+        public string RecommendationCollectionSuffix { get; set; } = string.Empty;
 
         public List<UserAccessEntry> UserAccess { get; set; } = new List<UserAccessEntry>();
 

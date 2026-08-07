@@ -1,5 +1,8 @@
 ﻿using System.Threading.Tasks;
 using MediaBrowser.Controller.Entities;
+using System;
+using System.Linq;
+using System.Threading;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Logging;
 using RecommendMe.Models;
@@ -39,6 +42,7 @@ namespace RecommendMe.Services
         private readonly CollectionSyncService collectionSyncService;
         private readonly NotificationService notificationService;
         private readonly RecommendationStore recommendationStore;
+        private readonly AdminSettingsStore adminSettingsStore;
         private readonly IUserDataManager userDataManager;
         private readonly ILogger logger;
 
@@ -47,6 +51,7 @@ namespace RecommendMe.Services
             CollectionSyncService collectionSyncService,
             NotificationService notificationService,
             RecommendationStore recommendationStore,
+            AdminSettingsStore adminSettingsStore,
             IUserDataManager userDataManager,
             ILogger logger)
         {
@@ -54,6 +59,7 @@ namespace RecommendMe.Services
             this.collectionSyncService = collectionSyncService;
             this.notificationService = notificationService;
             this.recommendationStore = recommendationStore;
+            this.adminSettingsStore = adminSettingsStore;
             this.userDataManager = userDataManager;
             this.logger = logger;
         }
@@ -74,7 +80,8 @@ namespace RecommendMe.Services
         ///      from this sender, for this media type (PermissionService).
         ///   2. The item is not currently in the recipient's recommendation
         ///      collection, checked live (CollectionSyncService).
-        ///   3. The item is not already marked watched for the recipient.
+        ///   3. When enabled by the admin, the item is not already marked
+        ///      watched for the recipient.
         /// </summary>
         public async Task<RecommendationResult> SendRecommendationAsync(
             User sender,
@@ -102,14 +109,18 @@ namespace RecommendMe.Services
                     return RecommendationResult.RecipientOptedOutMediaType;
             }
 
-            var recipientData = this.userDataManager.GetUserData(recipient, item);
-            if (recipientData != null && recipientData.Played)
+            var settings = await this.adminSettingsStore.GetAsync().ConfigureAwait(false);
+            if (settings.PreventWatchedRecommendations)
             {
-                this.logger.Debug(
-                    "RecommendMe: blocked - item {0} already watched by {1}.",
-                    item.InternalId,
-                    recipient.Name);
-                return RecommendationResult.AlreadyWatchedByRecipient;
+                var recipientData = this.userDataManager.GetUserData(recipient, item);
+                if (recipientData != null && recipientData.Played)
+                {
+                    this.logger.Debug(
+                        "RecommendMe: blocked - item {0} already watched by {1}.",
+                        item.InternalId,
+                        recipient.Name);
+                    return RecommendationResult.AlreadyWatchedByRecipient;
+                }
             }
 
             var alreadyInCollection = await this.collectionSyncService
@@ -174,6 +185,41 @@ namespace RecommendMe.Services
                 "RecommendMe: auto-removed item {0} from {1}'s recommendation collection after it was watched.",
                 itemId,
                 user.Name);
+        }
+
+        /// <summary>Reconciles active recommendations against Emby's current watched state.</summary>
+        public async Task<int> ClearWatchedRecommendationsAsync(CancellationToken cancellationToken, IProgress<double> progress)
+        {
+            var active = (await this.recommendationStore.GetAllAsync().ConfigureAwait(false))
+                .Where(r => r.Status == RecommendationStatus.Active)
+                .GroupBy(r => new { r.SentToUserId, r.ItemId })
+                .ToArray();
+            var users = Plugin.Instance.GetAllUsers().ToDictionary(u => u.InternalId);
+            var removed = 0;
+
+            for (var i = 0; i < active.Length; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                progress?.Report(active.Length == 0 ? 100 : (double)i / active.Length * 100);
+
+                var key = active[i].Key;
+                if (!users.TryGetValue(key.SentToUserId, out var user)) continue;
+
+                var item = Plugin.Instance.LibraryManager.GetItemById(key.ItemId);
+                if (item == null) continue;
+
+                var userData = this.userDataManager.GetUserData(user, item);
+                if (userData == null || !userData.Played) continue;
+
+                var resolved = await this.recommendationStore.ResolveWatchedAsync(key.SentToUserId, key.ItemId).ConfigureAwait(false);
+                if (resolved.Count == 0) continue;
+
+                await this.collectionSyncService.RemoveItemAsync(user, key.ItemId).ConfigureAwait(false);
+                removed++;
+            }
+
+            progress?.Report(100);
+            return removed;
         }
     }
 }

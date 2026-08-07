@@ -73,6 +73,7 @@ namespace RecommendMe
                 this.CollectionSyncService,
                 this.NotificationService,
                 this.RecommendationStore,
+                this.AdminSettingsStore,
                 this.userDataManager,
                 this.logger);
 
@@ -175,6 +176,12 @@ namespace RecommendMe
             {
                 try
                 {
+                    var settings = await this.AdminSettingsStore.GetAsync().ConfigureAwait(false);
+                    if (!settings.ClearWatchedRecommendations)
+                    {
+                        return;
+                    }
+
                     await this.RecommendationService
                         .HandleItemWatchedAsync(e.User.InternalId, e.Item.InternalId, e.User)
                         .ConfigureAwait(false);
