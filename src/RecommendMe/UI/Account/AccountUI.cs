@@ -11,10 +11,10 @@ namespace RecommendMe.UI.Account
     /// </summary>
     public class AccountUI : EditableOptionsBase
     {
-        public override string EditorTitle => "Account";
+        public override string EditorTitle => "Receive Policy";
 
         public override string EditorDescription =>
-            "Choose which of your permitted senders (and which media types) you want to receive recommendations from.";
+            "Choose which permitted users and media types you want to receive recommendations from.";
 
         public CaptionItem SendersHeading { get; set; } = new CaptionItem("Senders You Can Receive From");
 
@@ -22,7 +22,7 @@ namespace RecommendMe.UI.Account
         /// The sender list now loads automatically as soon as the page
         /// knows who's viewing it (see AccountPageView's User override).
         /// This button stays as a manual re-sync - e.g. if another user
-        /// changes their SendMode/media-type list while this tab is open.
+        /// changes their send policy/media-type list while this tab is open.
         /// </summary>
         public GenericItemList LoadButton { get; set; } = new GenericItemList
         {

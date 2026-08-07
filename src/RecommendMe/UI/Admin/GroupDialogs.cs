@@ -58,7 +58,7 @@ namespace RecommendMe.UI.Admin
             var settings = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult();
             var group = settings.Groups.FirstOrDefault(g => g.Id == this.groupId);
             state.UserResults = new GenericItemList();
-            if (group != null && !string.IsNullOrWhiteSpace(state.UserSearch))
+            if (group != null && (settings.AlwaysExpandUsersAndGroups || !string.IsNullOrWhiteSpace(state.UserSearch)))
             {
                 foreach (var user in Plugin.Instance.GetAllUsers().Where(u => u.Name.IndexOf(state.UserSearch, StringComparison.OrdinalIgnoreCase) >= 0).OrderBy(u => u.Name).Take(10))
                 {

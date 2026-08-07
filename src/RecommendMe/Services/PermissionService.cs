@@ -9,7 +9,7 @@ namespace RecommendMe.Services
     /// <summary>
     /// Why a send was or wasn't permitted. AdminBlocked covers every
     /// server-wide/admin-matrix reason (unsupported media type, Emergency
-    /// Revocation, SendMode) - these are intentionally not detailed further
+    /// Revocation, send policy) - these are intentionally not detailed further
     /// to the sender, since they're the admin's policy, not the recipient's.
     /// The Recipient* values are the recipient's own Account-tab choice, and
     /// are surfaced back to the sender by name (see RecommendPageView).
@@ -25,15 +25,15 @@ namespace RecommendMe.Services
     /// <summary>
     /// Resolves whether a source user may send a recommendation of a given
     /// media type to a target user. Combines the admin-configured global
-    /// media type list, the sender's own SendMode/AllowedTargetUserIds
-    /// (materialized from <see cref="AdminSettings.NewUserDefaultSendMode"/>
-    /// the first time a user is seen), either side's Emergency Revocation
+    /// media type list, the sender's own send policy/AllowedTargetUserIds
+    /// (copied from the selected default user the first time a user is seen),
+    /// either side's Emergency Revocation
     /// flag, and the recipient's own Account-tab opt-outs (<see cref="UserPreferenceStore"/>).
     ///
     /// Resolution order (most to least restrictive wins):
     /// 1. GloballyAllowedMediaTypes (server-wide - the type must be offerable at all)
     /// 2. AccessSuspended on either side (Emergency Revocation)
-    /// 3. Source's SendMode (Everyone / NoOne / SpecificUsers allow-list)
+    /// 3. Source's send policy (Everyone / NoOne / AllowedUsers / GroupMembers)
     /// 4. Recipient's own master Blocked switch for this sender
     /// 5. Recipient's own opt-out of this specific sender/media-type
     /// </summary>
@@ -49,53 +49,80 @@ namespace RecommendMe.Services
         }
 
         /// <summary>
-        /// Ensures a UserAccessEntry exists for this user, creating one from
-        /// NewUserDefaultSendMode on first sight. When AutoGrantNewUsersToExistingSendLists
-        /// is set, also adds this new user to every existing SpecificUsers-mode
-        /// user's AllowedTargetUserIds. Call this whenever a user is about to
+        /// Ensures a UserAccessEntry exists for this user, copying the selected
+        /// default user's send policy and groups on first sight. Existing users
+        /// that opt into new recipients also receive the new id in their stored
+        /// allowed-user specification. Call this whenever a user is about to
         /// be shown in the UI or evaluated for permission, so admins always
         /// see every known user in the matrix.
         /// </summary>
         public async Task<UserAccessEntry> EnsureUserAccessEntryAsync(User user)
         {
-            var settings = await this.adminSettingsStore.GetAsync().ConfigureAwait(false);
-            var existing = settings.UserAccess.FirstOrDefault(u => u.UserId == user.InternalId);
+            var snapshot = await this.adminSettingsStore.GetAsync().ConfigureAwait(false);
+            var existing = snapshot.UserAccess.FirstOrDefault(u => u.UserId == user.InternalId);
             if (existing != null)
             {
+                if (!string.Equals(existing.UserName, user.Name, System.StringComparison.Ordinal))
+                {
+                    await this.adminSettingsStore.MutateAsync(s =>
+                    {
+                        var renamed = s.UserAccess.FirstOrDefault(u => u.UserId == user.InternalId);
+                        if (renamed != null) renamed.UserName = user.Name;
+                    }).ConfigureAwait(false);
+                    existing.UserName = user.Name;
+                }
+
                 return existing;
             }
 
-            var created = new UserAccessEntry
-            {
-                UserId = user.InternalId,
-                UserName = user.Name,
-                SendMode = settings.NewUserDefaultSendMode
-            };
-
+            UserAccessEntry result = null;
             await this.adminSettingsStore.MutateAsync(s =>
             {
-                if (s.UserAccess.Any(u => u.UserId == user.InternalId))
+                result = s.UserAccess.FirstOrDefault(u => u.UserId == user.InternalId);
+                if (result != null)
                 {
+                    result.UserName = user.Name;
                     return;
                 }
 
-                s.UserAccess.Add(created);
+                var template = s.DefaultUserPolicySourceUserId.HasValue
+                    ? s.UserAccess.FirstOrDefault(u => u.UserId == s.DefaultUserPolicySourceUserId.Value)
+                    : null;
 
-                if (s.AutoGrantNewUsersToExistingSendLists)
+                result = new UserAccessEntry
                 {
-                    foreach (var existingEntry in s.UserAccess)
+                    UserId = user.InternalId,
+                    UserName = user.Name,
+                    SendPolicy = template?.SendPolicy ?? SendPolicyType.NoOne,
+                    AllowNewUsers = template?.AllowNewUsers ?? false,
+                    AllowedTargetUserIds = template == null
+                        ? new System.Collections.Generic.List<long>()
+                        : new System.Collections.Generic.List<long>(template.AllowedTargetUserIds)
+                };
+
+                foreach (var existingEntry in s.UserAccess.Where(e => e.AllowNewUsers))
+                {
+                    if (!existingEntry.AllowedTargetUserIds.Contains(user.InternalId))
                     {
-                        if (existingEntry.UserId != created.UserId
-                            && existingEntry.SendMode == SendMode.SpecificUsers
-                            && !existingEntry.AllowedTargetUserIds.Contains(created.UserId))
+                        existingEntry.AllowedTargetUserIds.Add(user.InternalId);
+                    }
+                }
+
+                if (template != null)
+                {
+                    foreach (var group in s.Groups.Where(g => g.MemberUserIds.Contains(template.UserId)))
+                    {
+                        if (!group.MemberUserIds.Contains(user.InternalId))
                         {
-                            existingEntry.AllowedTargetUserIds.Add(created.UserId);
+                            group.MemberUserIds.Add(user.InternalId);
                         }
                     }
                 }
+
+                s.UserAccess.Add(result);
             }).ConfigureAwait(false);
 
-            return created;
+            return result;
         }
 
         public async Task<SendPermissionResult> CanSendAsync(User source, User target, string mediaType)
@@ -105,15 +132,16 @@ namespace RecommendMe.Services
                 return SendPermissionResult.AdminBlocked;
             }
 
+            await this.EnsureUserAccessEntryAsync(source).ConfigureAwait(false);
+            await this.EnsureUserAccessEntryAsync(target).ConfigureAwait(false);
             var settings = await this.adminSettingsStore.GetAsync().ConfigureAwait(false);
+            var sourceEntry = settings.UserAccess.First(u => u.UserId == source.InternalId);
+            var targetEntry = settings.UserAccess.First(u => u.UserId == target.InternalId);
 
             if (!settings.GloballyAllowedMediaTypes.Contains(mediaType))
             {
                 return SendPermissionResult.AdminBlocked;
             }
-
-            var sourceEntry = await this.EnsureUserAccessEntryAsync(source).ConfigureAwait(false);
-            var targetEntry = await this.EnsureUserAccessEntryAsync(target).ConfigureAwait(false);
 
             if (sourceEntry.AccessSuspended || targetEntry.AccessSuspended)
             {
@@ -148,23 +176,23 @@ namespace RecommendMe.Services
         }
 
         /// <summary>
-        /// Whether sourceEntry's SendMode permits sending to targetUserId.
+        /// Whether sourceEntry's send policy permits sending to targetUserId.
         /// Internal (not private) so other UI-layer builders that need the
         /// same "would this currently be allowed" check - e.g. HistoryViewBuilder's
         /// third-party visibility filter, RecommendViewBuilder's target picker -
-        /// can reuse this instead of re-implementing the SendMode switch.
+        /// can reuse this instead of re-implementing the policy switch.
         /// </summary>
         internal static bool IsTargetAllowed(UserAccessEntry sourceEntry, long targetUserId, AdminSettings settings)
         {
-            switch (sourceEntry.SendMode)
+            switch (sourceEntry.SendPolicy)
             {
-                case SendMode.Everyone:
+                case SendPolicyType.Everyone:
                     return true;
-                case SendMode.NoOne:
+                case SendPolicyType.NoOne:
                     return false;
-                case SendMode.SpecificUsers:
+                case SendPolicyType.AllowedUsers:
                     return sourceEntry.AllowedTargetUserIds.Contains(targetUserId);
-                case SendMode.MyGroups:
+                case SendPolicyType.GroupMembers:
                     return settings.Groups.Any(g => g.MemberUserIds.Contains(sourceEntry.UserId) && g.MemberUserIds.Contains(targetUserId));
                 default:
                     return false;

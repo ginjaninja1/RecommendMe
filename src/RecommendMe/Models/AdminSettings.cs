@@ -28,16 +28,16 @@ namespace RecommendMe.Models
 
     /// <summary>
     /// Who a user is allowed to send recommendations to. This is the entire
-    /// access model - there is no separate "receive scope": if A's SendMode
+    /// access model - there is no separate admin "receive scope": if A's send policy
     /// permits sending to B, B necessarily receives from A. See
     /// <see cref="Services.PermissionService"/> for evaluation order.
     /// </summary>
-    public enum SendMode
+    public enum SendPolicyType
     {
         Everyone,
         NoOne,
-        SpecificUsers,
-        MyGroups
+        AllowedUsers,
+        GroupMembers
     }
 
     public class UserGroup
@@ -49,12 +49,12 @@ namespace RecommendMe.Models
 
     /// <summary>
     /// Per-user access record. Every user the plugin has ever evaluated has
-    /// exactly one of these, materialized from <see cref="AdminSettings.NewUserDefaultSendMode"/>
-    /// the first time they're seen (see <see cref="Services.PermissionService.EnsureUserAccessEntryAsync"/>).
+    /// exactly one of these, copied from the configured default user the first
+    /// time they're seen (see <see cref="Services.PermissionService.EnsureUserAccessEntryAsync"/>).
     ///
     /// <see cref="AccessSuspended"/> is the Emergency Revocation switch: it
     /// blocks this user from sending OR receiving, without touching their
-    /// configured SendMode/AllowedTargetUserIds, so un-revoking restores
+    /// configured policy/AllowedTargetUserIds, so un-revoking restores
     /// exactly what was there before.
     /// </summary>
     public class UserAccessEntry
@@ -63,10 +63,17 @@ namespace RecommendMe.Models
 
         public string UserName { get; set; }
 
-        public SendMode SendMode { get; set; } = SendMode.Everyone;
+        public SendPolicyType SendPolicy { get; set; } = SendPolicyType.NoOne;
 
-        /// <summary>Target user ids this user may recommend to, when SendMode == SpecificUsers.</summary>
+        /// <summary>Target user ids this user may recommend to when AllowedUsers is active.</summary>
         public List<long> AllowedTargetUserIds { get; set; } = new List<long>();
+
+        /// <summary>
+        /// Whether users first discovered after this policy was configured are
+        /// added to its allowed-user specification. The list is maintained even
+        /// when AllowedUsers is not the active send policy.
+        /// </summary>
+        public bool AllowNewUsers { get; set; }
 
         /// <summary>Emergency Revocation: true blocks all sending and receiving for this user.</summary>
         public bool AccessSuspended { get; set; } = false;
@@ -91,22 +98,16 @@ namespace RecommendMe.Models
         public List<string> GloballyAllowedMediaTypes { get; set; } = new List<string>(RecommendableMediaTypes.All);
 
         /// <summary>
-        /// SendMode a brand-new user's UserAccessEntry is created with.
-        /// Only Everyone or NoOne are meaningful defaults here - the admin UI
-        /// does not offer SpecificUsers for this setting, since a new user
-        /// has no target list to speak of yet.
+        /// Existing user whose groups, send policy, allowed-user specification,
+        /// and new-user behavior are copied when a new user is first seen.
         /// </summary>
-        public SendMode NewUserDefaultSendMode { get; set; } = SendMode.Everyone;
+        public long? DefaultUserPolicySourceUserId { get; set; }
 
         /// <summary>
-        /// When a new user is first seen, should they automatically be added
-        /// to every existing SpecificUsers-mode user's AllowedTargetUserIds?
-        /// True = new users are auto-included as a valid recommend target for
-        /// everyone already using SpecificUsers mode. False = existing users'
-        /// named lists are left untouched and the admin must add the new user
-        /// manually if desired.
+        /// When enabled, blank user/group filters immediately show their first
+        /// page. Disable it on large configurations to require a search term.
         /// </summary>
-        public bool AutoGrantNewUsersToExistingSendLists { get; set; } = true;
+        public bool AlwaysExpandUsersAndGroups { get; set; } = true;
 
         public List<UserAccessEntry> UserAccess { get; set; } = new List<UserAccessEntry>();
 

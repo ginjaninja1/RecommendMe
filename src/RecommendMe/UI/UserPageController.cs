@@ -46,7 +46,7 @@
                 new TabPageController(
                     pluginInfo,
                     "RecommendMeAccount",
-                    "Account",
+                    "Receive Policy",
                     info => new AccountPageView(info, this.logger))
             };
         }

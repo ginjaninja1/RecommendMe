@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using Emby.Web.GenericEdit.Elements;
 using Emby.Web.GenericEdit.Elements.List;
@@ -9,168 +10,121 @@ namespace RecommendMe.UI.Admin
 {
     internal static class AdminViewBuilder
     {
-        public static AdminSettingsUI Build(AdminSettings settings, IReadOnlyList<User> allUsers)
-        {
-            return new AdminSettingsUI
-            {
-                NewUserDefaultsList = BuildNewUserDefaultsList(settings),
-
-                UserAccessList = BuildUserAccessList(settings, allUsers)
-            };
-        }
-
         internal static GenericItemList BuildMediaTypeList(List<string> allowed)
         {
-            var list = new GenericItemList();
-
-            foreach (var mediaType in RecommendableMediaTypes.All)
+            return new GenericItemList(RecommendableMediaTypes.All.Select(mediaType =>
             {
-                list.Add(new GenericListItem
+                var included = allowed.Contains(mediaType);
+                return new GenericListItem
                 {
                     PrimaryText = mediaType,
                     Icon = global::RecommendMe.UI.Recommend.RecommendViewBuilder.GetIcon(mediaType),
-                    Status = allowed.Contains(mediaType) ? ItemStatus.Succeeded : ItemStatus.Unavailable,
+                    Status = included ? ItemStatus.Succeeded : ItemStatus.Unavailable,
                     Toggle = new ToggleButtonItem("Allowed")
                     {
-                        IsChecked = allowed.Contains(mediaType),
+                        IsChecked = included,
                         CommandId = AdminCommands.BuildMediaTypeToggle(mediaType)
                     }
-                });
-            }
-
-            return list;
+                };
+            }));
         }
 
-        private static GenericItemList BuildNewUserDefaultsList(AdminSettings settings)
+        public static AdminSettingsUI Build(AdminSettings settings, IReadOnlyList<User> users, AdminSettingsUI state)
         {
-            var newUsersCanSendToEveryone = settings.NewUserDefaultSendMode == SendMode.Everyone;
+            state = state ?? new AdminSettingsUI();
+            state.ExpansionSetting = new GenericItemList
+            {
+                new GenericListItem
+                {
+                    PrimaryText = "Always Expand Users and Groups",
+                    SecondaryText = settings.AlwaysExpandUsersAndGroups
+                        ? "All users and groups will show"
+                        : "Users and Groups will have a search interface (Large Configs)",
+                    Status = settings.AlwaysExpandUsersAndGroups ? ItemStatus.Succeeded : ItemStatus.Unavailable,
+                    Toggle = new ToggleButtonItem("Expand")
+                    {
+                        IsChecked = settings.AlwaysExpandUsersAndGroups,
+                        CommandId = AdminCommands.ToggleExpansion
+                    }
+                }
+            };
+
+            state.NewUserDefaultsList = BuildDefaultPolicy(settings, users);
+
+            var matches = users.Where(u => Contains(u.Name, state.UserSearch)).OrderBy(u => u.Name).ToArray();
+            state.UserSearchSummary = new LabelItem($"{matches.Length} matches, {users.Count} users total (showing at most 10)");
+            state.UserAccessList = new GenericItemList();
+            if (settings.AlwaysExpandUsersAndGroups || !string.IsNullOrWhiteSpace(state.UserSearch))
+            {
+                foreach (var user in matches.Take(10))
+                {
+                    var entry = settings.UserAccess.First(e => e.UserId == user.InternalId);
+                    var groups = GroupNames(settings, entry.UserId);
+                    state.UserAccessList.Add(new GenericListItem
+                    {
+                        PrimaryText = $"{user.Name} - {PolicyName(entry.SendPolicy)} / New User Allowed {(entry.AllowNewUsers ? "Y" : "N")}",
+                        SecondaryText = "Groups: " + (groups.Length == 0 ? "None" : string.Join(", ", groups)),
+                        Icon = IconNames.person,
+                        Status = entry.AccessSuspended ? ItemStatus.Failed : ItemStatus.Succeeded,
+                        Toggle = new ToggleButtonItem("Suspended")
+                        {
+                            IsChecked = entry.AccessSuspended,
+                            CommandId = AdminCommands.Suspended(entry.UserId)
+                        },
+                        Button1 = new ButtonItem
+                        {
+                            Caption = "Manage",
+                            SubMenuButtons = new List<ButtonItem>
+                            {
+                                new ButtonItem("Send to") { CommandId = AdminCommands.SendTo(entry.UserId) },
+                                new ButtonItem("Receive from") { CommandId = AdminCommands.ReceiveFrom(entry.UserId) },
+                                new ButtonItem("Group Membership") { CommandId = AdminCommands.Membership(entry.UserId) }
+                            }
+                        }
+                    });
+                }
+            }
+
+            return state;
+        }
+
+        internal static string PolicyName(SendPolicyType policy)
+        {
+            switch (policy)
+            {
+                case SendPolicyType.Everyone: return "Everyone";
+                case SendPolicyType.NoOne: return "No One";
+                case SendPolicyType.AllowedUsers: return "Allowed Users";
+                case SendPolicyType.GroupMembers: return "Group Members";
+                default: return policy.ToString();
+            }
+        }
+
+        internal static string[] GroupNames(AdminSettings settings, long userId) =>
+            settings.Groups.Where(g => g.MemberUserIds.Contains(userId)).Select(g => g.Name).OrderBy(n => n).ToArray();
+
+        internal static bool Contains(string value, string search) =>
+            string.IsNullOrWhiteSpace(search) || (value?.IndexOf(search, StringComparison.OrdinalIgnoreCase) ?? -1) >= 0;
+
+        private static GenericItemList BuildDefaultPolicy(AdminSettings settings, IReadOnlyList<User> users)
+        {
+            var source = settings.DefaultUserPolicySourceUserId.HasValue
+                ? settings.UserAccess.FirstOrDefault(e => e.UserId == settings.DefaultUserPolicySourceUserId.Value)
+                : null;
+            var sourceUser = source == null ? null : users.FirstOrDefault(u => u.InternalId == source.UserId);
+            var text = source == null
+                ? "No default user selected - new users use No One and no groups"
+                : $"{sourceUser?.Name ?? source.UserName} - {PolicyName(source.SendPolicy)} / New User Allowed {(source.AllowNewUsers ? "Y" : "N")}";
+            var groups = source == null ? new string[0] : GroupNames(settings, source.UserId);
 
             return new GenericItemList
             {
                 new GenericListItem
                 {
-                    PrimaryText = "New users can send to everyone by default",
-                    SecondaryText = newUsersCanSendToEveryone
-                        ? "Everyone"
-                        : "No One (admin must grant recipients manually)",
-                    Status = newUsersCanSendToEveryone ? ItemStatus.Succeeded : ItemStatus.Unavailable,
-                    Toggle = new ToggleButtonItem("Everyone")
-                    {
-                        IsChecked = newUsersCanSendToEveryone,
-                        CommandId = AdminCommands.BuildNewUserDefaultSendModeToggle()
-                    }
-                },
-                new GenericListItem
-                {
-                    PrimaryText = "Auto-add new users to existing users' allow-lists",
-                    SecondaryText = settings.AutoGrantNewUsersToExistingSendLists
-                        ? "New users are added as an allowed recipient for everyone using a named list"
-                        : "Existing named lists are left untouched - admin adds new users manually",
-                    Status = settings.AutoGrantNewUsersToExistingSendLists ? ItemStatus.Succeeded : ItemStatus.Unavailable,
-                    Toggle = new ToggleButtonItem("Allowed")
-                    {
-                        IsChecked = settings.AutoGrantNewUsersToExistingSendLists,
-                        CommandId = AdminCommands.BuildAutoGrantToggle()
-                    }
-                }
-            };
-        }
-
-        private static GenericItemList BuildUserAccessList(AdminSettings settings, IReadOnlyList<User> allUsers)
-        {
-            var list = new GenericItemList();
-
-            foreach (var entry in settings.UserAccess.OrderBy(u => u.UserName))
-            {
-                var groupNames = settings.Groups.Where(g => g.MemberUserIds.Contains(entry.UserId)).Select(g => g.Name).OrderBy(n => n).ToArray();
-                var subItems = new GenericItemList
-                {
-                    new GenericListItem
-                    {
-                        PrimaryText = "Access suspended (Emergency Revocation)",
-                        SecondaryText = entry.AccessSuspended
-                            ? "Blocked from sending and receiving"
-                            : "Not suspended",
-                        Status = entry.AccessSuspended ? ItemStatus.Failed : ItemStatus.Succeeded,
-                        Toggle = new ToggleButtonItem("Suspended")
-                        {
-                            IsChecked = entry.AccessSuspended,
-                            CommandId = AdminCommands.BuildUserSuspendedToggle(entry.UserId)
-                        }
-                    }
-                };
-
-                if (entry.SendMode == SendMode.SpecificUsers)
-                {
-                    foreach (var target in allUsers.Where(u => u.InternalId != entry.UserId).OrderBy(u => u.Name))
-                    {
-                        var included = entry.AllowedTargetUserIds.Contains(target.InternalId);
-                        subItems.Add(new GenericListItem
-                        {
-                            PrimaryText = $"Can send to: {target.Name}",
-                            Status = included ? ItemStatus.Succeeded : ItemStatus.Unavailable,
-                            Toggle = new ToggleButtonItem("Included")
-                            {
-                                IsChecked = included,
-                                CommandId = AdminCommands.BuildUserTargetToggle(entry.UserId, target.InternalId)
-                            }
-                        });
-                    }
-                }
-
-                if (entry.SendMode == SendMode.MyGroups && groupNames.Length == 0)
-                {
-                    subItems.Add(new GenericListItem
-                    {
-                        PrimaryText = "No group membership",
-                        SecondaryText = "This user cannot send to anyone until they are added to a group.",
-                        Icon = IconNames.warning,
-                        Status = ItemStatus.Failed
-                    });
-                }
-
-                list.Add(new GenericListItem
-                {
-                    PrimaryText = entry.UserName,
+                    PrimaryText = text,
+                    SecondaryText = "Groups: " + (groups.Length == 0 ? "None" : string.Join(", ", groups)),
                     Icon = IconNames.person,
-                    SecondaryText = DescribeSendMode(entry, groupNames),
-                    Status = entry.AccessSuspended || (entry.SendMode == SendMode.MyGroups && groupNames.Length == 0) ? ItemStatus.Failed : ItemStatus.Succeeded,
-                    Button1 = BuildSendModeButton(entry, groupNames.Length > 0),
-                    SubItems = subItems
-                });
-            }
-
-            return list;
-        }
-
-        private static string DescribeSendMode(UserAccessEntry entry, string[] groupNames)
-        {
-            switch (entry.SendMode)
-            {
-                case SendMode.Everyone:
-                    return "Can send to: Everyone";
-                case SendMode.NoOne:
-                    return "Can send to: No One";
-                case SendMode.SpecificUsers:
-                    return $"Can send to: {entry.AllowedTargetUserIds.Count} named user(s) - see below";
-                case SendMode.MyGroups:
-                    return groupNames.Length == 0 ? "Can send to: No one (not a member of any group)" : $"Can send to: Groups {string.Join(", ", groupNames)}";
-                default:
-                    return null;
-            }
-        }
-
-        private static ButtonItem BuildSendModeButton(UserAccessEntry entry, bool hasGroups)
-        {
-            return new ButtonItem
-            {
-                Caption = "Change Send Mode",
-                SubMenuButtons = new List<ButtonItem>
-                {
-                    new ButtonItem("Everyone") { CommandId = AdminCommands.BuildUserSendModeCommand(entry.UserId, SendMode.Everyone) },
-                    new ButtonItem("No One") { CommandId = AdminCommands.BuildUserSendModeCommand(entry.UserId, SendMode.NoOne) },
-                    new ButtonItem("Specific Users") { CommandId = AdminCommands.BuildUserSendModeCommand(entry.UserId, SendMode.SpecificUsers) },
-                    new ButtonItem("My Group(s) Members") { CommandId = AdminCommands.BuildUserSendModeCommand(entry.UserId, SendMode.MyGroups), IsEnabled = hasGroups }
+                    Button1 = new ButtonItem("Default User Policy") { CommandId = AdminCommands.DefaultPolicyRefresh }
                 }
             };
         }

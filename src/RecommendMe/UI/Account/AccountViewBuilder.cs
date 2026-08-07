@@ -11,7 +11,7 @@ namespace RecommendMe.UI.Account
     {
         /// <summary>
         /// Builds the sender list for <paramref name="viewer"/>: every other
-        /// user whose SendMode currently permits sending to this viewer, each
+        /// user whose send policy currently permits sending to this viewer, each
         /// with an opt-out toggle per server-wide media type. This narrows the
         /// admin-configured access model - it never grants anything the admin
         /// hasn't already allowed, matching PermissionService's rule.
@@ -19,18 +19,23 @@ namespace RecommendMe.UI.Account
         public static async Task<AccountUI> BuildAsync(User viewer)
         {
             var plugin = Plugin.Instance;
+            var allUsers = plugin.GetAllUsers();
+            foreach (var user in allUsers)
+            {
+                await plugin.PermissionService.EnsureUserAccessEntryAsync(user).ConfigureAwait(false);
+            }
+
             var settings = await plugin.AdminSettingsStore.GetAsync().ConfigureAwait(false);
             var preferences = await plugin.UserPreferenceStore.GetForUserAsync(viewer.InternalId).ConfigureAwait(false);
-
-            var viewerEntry = await plugin.PermissionService.EnsureUserAccessEntryAsync(viewer).ConfigureAwait(false);
+            var viewerEntry = settings.UserAccess.First(u => u.UserId == viewer.InternalId);
 
             var senderList = new GenericItemList();
 
             if (!viewerEntry.AccessSuspended)
             {
-                foreach (var candidate in plugin.GetAllUsers().Where(u => u.InternalId != viewer.InternalId).OrderBy(u => u.Name))
+                foreach (var candidate in allUsers.Where(u => u.InternalId != viewer.InternalId).OrderBy(u => u.Name))
                 {
-                    var candidateEntry = await plugin.PermissionService.EnsureUserAccessEntryAsync(candidate).ConfigureAwait(false);
+                    var candidateEntry = settings.UserAccess.First(u => u.UserId == candidate.InternalId);
                     if (candidateEntry.AccessSuspended || !PermissionService.IsTargetAllowed(candidateEntry, viewer.InternalId, settings))
                     {
                         continue;
@@ -48,7 +53,7 @@ namespace RecommendMe.UI.Account
                         {
                             PrimaryText = mediaType,
                             Icon = global::RecommendMe.UI.Recommend.RecommendViewBuilder.GetIcon(mediaType),
-                            Status = isOptedIn ? ItemStatus.Succeeded : ItemStatus.Unavailable,
+                            Status = isBlocked ? ItemStatus.Unavailable : (isOptedIn ? ItemStatus.Succeeded : ItemStatus.Unavailable),
                             Toggle = new ToggleButtonItem("Receive")
                             {
                                 IsChecked = isOptedIn && !isBlocked,
@@ -61,6 +66,8 @@ namespace RecommendMe.UI.Account
                     senderList.Add(new GenericListItem
                     {
                         PrimaryText = candidate.Name,
+                        SecondaryText = "Permitted by send policy",
+                        Icon = IconNames.person,
                         Status = isBlocked ? ItemStatus.Failed : ItemStatus.Succeeded,
                         Toggle = new ToggleButtonItem("Accept recommendations")
                         {

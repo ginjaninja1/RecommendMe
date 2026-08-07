@@ -15,7 +15,10 @@ namespace RecommendMe.UI.Admin
             state = state ?? new GroupsUI();
             var matches = settings.Groups.Where(g => Contains(g.Name, state.GroupSearch)).OrderBy(g => g.Name).ToArray();
             state.GroupSearchSummary = new LabelItem($"{matches.Length} matches, {settings.Groups.Count} Groups total");
-            state.GroupResults = new GenericItemList(matches.Take(10)
+            var visibleGroups = settings.AlwaysExpandUsersAndGroups || !string.IsNullOrWhiteSpace(state.GroupSearch)
+                ? matches.Take(10)
+                : Enumerable.Empty<UserGroup>();
+            state.GroupResults = new GenericItemList(visibleGroups
                 .Select(g => new GenericListItem
                 {
                     PrimaryText = g.Name,
@@ -34,9 +37,9 @@ namespace RecommendMe.UI.Admin
                 }));
 
             state.MembershipResults = new GenericItemList();
-            if (!string.IsNullOrWhiteSpace(state.MembershipUserSearch))
+            if (settings.AlwaysExpandUsersAndGroups || !string.IsNullOrWhiteSpace(state.MembershipUserSearch))
             {
-                foreach (var user in users.Where(u => Contains(u.Name, state.MembershipUserSearch)).OrderBy(u => u.Name).Take(3))
+                foreach (var user in users.Where(u => Contains(u.Name, state.MembershipUserSearch)).OrderBy(u => u.Name).Take(10))
                 {
                     var memberships = settings.Groups.Where(g => g.MemberUserIds.Contains(user.InternalId)).Select(g => g.Name);
                     state.MembershipResults.Add(new GenericListItem { PrimaryText = user.Name, SecondaryText = string.Join(", ", memberships), Icon = IconNames.person });

@@ -1,103 +1,85 @@
-﻿using System;
-using RecommendMe.Models;
+using System;
 
 namespace RecommendMe.UI.Admin
 {
     internal static class AdminCommands
     {
-        public const string PageSave = "PageSave";
+        public const string Refresh = "admin-refresh";
+        public const string ToggleExpansion = "admin-toggle-expansion";
+        public const string SendToRefresh = "send-to-refresh";
+        public const string ReceiveFromRefresh = "receive-from-refresh";
+        public const string GroupMembershipRefresh = "group-membership-refresh";
+        public const string DefaultPolicyRefresh = "default-policy-refresh";
+        public const string ToggleAllowNewUsers = "send-to-toggle-new-users";
 
+        private const string SuspendedPrefix = "admin-suspended:";
         private const string MediaTypePrefix = "mediatype:";
-        private const string NewUserDefaultSendModePrefix = "newuserdefaultsendmode";
-        private const string AutoGrantPrefix = "autogrant";
-        private const string UserSuspendedPrefix = "usersuspended:";
-        private const string UserSendModeSeparator = "|||";
-        private const string UserSendModePrefix = "usersendmode:";
-        private const string UserTargetSeparator = "|||";
-        private const string UserTargetPrefix = "usertarget:";
+        private const string SendToPrefix = "admin-send-to:";
+        private const string ReceiveFromPrefix = "admin-receive-from:";
+        private const string MembershipPrefix = "admin-membership:";
+        private const string TargetPrefix = "admin-target:";
+        private const string ReceiveSenderPrefix = "admin-receive-sender:";
+        private const string ReceiveMediaPrefix = "admin-receive-media:";
+        private const string GroupPrefix = "admin-user-group:";
+        private const string SelectDefaultPrefix = "admin-select-default:";
+        private const string Separator = "|||";
 
-        public static string BuildMediaTypeToggle(string mediaType) => $"{MediaTypePrefix}{mediaType}";
+        public static string Suspended(long id) => SuspendedPrefix + id;
+        public static string BuildMediaTypeToggle(string mediaType) => MediaTypePrefix + mediaType;
+        public static string SendTo(long id) => SendToPrefix + id;
+        public static string ReceiveFrom(long id) => ReceiveFromPrefix + id;
+        public static string Membership(long id) => MembershipPrefix + id;
+        public static string Target(long ownerId, long targetId) => TargetPrefix + ownerId + Separator + targetId;
+        public static string ReceiveSender(long ownerId, long senderId) => ReceiveSenderPrefix + ownerId + Separator + senderId;
+        public static string ReceiveMedia(long ownerId, long senderId, string mediaType) => ReceiveMediaPrefix + ownerId + Separator + senderId + Separator + mediaType;
+        public static string Group(long userId, string groupId) => GroupPrefix + userId + Separator + groupId;
+        public static string SelectDefault(long id) => SelectDefaultPrefix + id;
 
-        public static string BuildNewUserDefaultSendModeToggle() => NewUserDefaultSendModePrefix;
+        public static bool TrySuspended(string command, out long id) => TryLong(command, SuspendedPrefix, out id);
+        public static bool TryParseMediaType(string command, out string mediaType) => TryPayload(command, MediaTypePrefix, out mediaType);
+        public static bool TrySendTo(string command, out long id) => TryLong(command, SendToPrefix, out id);
+        public static bool TryReceiveFrom(string command, out long id) => TryLong(command, ReceiveFromPrefix, out id);
+        public static bool TryMembership(string command, out long id) => TryLong(command, MembershipPrefix, out id);
+        public static bool TrySelectDefault(string command, out long id) => TryLong(command, SelectDefaultPrefix, out id);
+        public static bool TryTarget(string command, out long ownerId, out long targetId) => TryLongPair(command, TargetPrefix, out ownerId, out targetId);
+        public static bool TryReceiveSender(string command, out long ownerId, out long senderId) => TryLongPair(command, ReceiveSenderPrefix, out ownerId, out senderId);
 
-        public static string BuildAutoGrantToggle() => AutoGrantPrefix;
+        public static bool TryReceiveMedia(string command, out long ownerId, out long senderId, out string mediaType)
+        {
+            ownerId = 0; senderId = 0; mediaType = null;
+            if (!TryPayload(command, ReceiveMediaPrefix, out var value)) return false;
+            var parts = value.Split(new[] { Separator }, StringSplitOptions.None);
+            return parts.Length == 3 && long.TryParse(parts[0], out ownerId) && long.TryParse(parts[1], out senderId) && !string.IsNullOrEmpty(mediaType = parts[2]);
+        }
 
-        public static string BuildUserSuspendedToggle(long userId) => $"{UserSuspendedPrefix}{userId}";
+        public static bool TryGroup(string command, out long userId, out string groupId)
+        {
+            userId = 0; groupId = null;
+            if (!TryPayload(command, GroupPrefix, out var value)) return false;
+            var parts = value.Split(new[] { Separator }, StringSplitOptions.None);
+            return parts.Length == 2 && long.TryParse(parts[0], out userId) && !string.IsNullOrEmpty(groupId = parts[1]);
+        }
 
-        public static string BuildUserSendModeCommand(long userId, SendMode mode) =>
-            $"{UserSendModePrefix}{userId}{UserSendModeSeparator}{mode}";
+        private static bool TryLongPair(string command, string prefix, out long first, out long second)
+        {
+            first = 0; second = 0;
+            if (!TryPayload(command, prefix, out var value)) return false;
+            var parts = value.Split(new[] { Separator }, StringSplitOptions.None);
+            return parts.Length == 2 && long.TryParse(parts[0], out first) && long.TryParse(parts[1], out second);
+        }
 
-        public static string BuildUserTargetToggle(long userId, long targetUserId) =>
-            $"{UserTargetPrefix}{userId}{UserTargetSeparator}{targetUserId}";
-
-        public static bool IsNewUserDefaultSendModeToggle(string commandId) => commandId == NewUserDefaultSendModePrefix;
-
-        public static bool IsAutoGrantToggle(string commandId) => commandId == AutoGrantPrefix;
-
-        public static bool TryParsePrefixed(string commandId, string prefix, out long id)
+        private static bool TryLong(string command, string prefix, out long id)
         {
             id = 0;
-            if (commandId == null || !commandId.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            return long.TryParse(commandId.Substring(prefix.Length), out id);
+            return TryPayload(command, prefix, out var value) && long.TryParse(value, out id);
         }
 
-        public static bool TryParseUserSuspended(string commandId, out long userId) =>
-            TryParsePrefixed(commandId, UserSuspendedPrefix, out userId);
-
-        public static bool TryParseMediaType(string commandId, out string mediaType)
+        private static bool TryPayload(string command, string prefix, out string value)
         {
-            mediaType = null;
-            if (commandId == null || !commandId.StartsWith(MediaTypePrefix, StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            mediaType = commandId.Substring(MediaTypePrefix.Length);
-            return true;
-        }
-
-        public static bool TryParseUserSendMode(string commandId, out long userId, out SendMode mode)
-        {
-            userId = 0;
-            mode = SendMode.Everyone;
-
-            if (commandId == null || !commandId.StartsWith(UserSendModePrefix, StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            var payload = commandId.Substring(UserSendModePrefix.Length);
-            var parts = payload.Split(new[] { UserSendModeSeparator }, StringSplitOptions.None);
-            if (parts.Length != 2 || !long.TryParse(parts[0], out userId) || !Enum.TryParse(parts[1], out mode))
-            {
-                return false;
-            }
-
-            return true;
-        }
-
-        public static bool TryParseUserTarget(string commandId, out long userId, out long targetUserId)
-        {
-            userId = 0;
-            targetUserId = 0;
-
-            if (commandId == null || !commandId.StartsWith(UserTargetPrefix, StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            var payload = commandId.Substring(UserTargetPrefix.Length);
-            var parts = payload.Split(new[] { UserTargetSeparator }, StringSplitOptions.None);
-            if (parts.Length != 2 || !long.TryParse(parts[0], out userId) || !long.TryParse(parts[1], out targetUserId))
-            {
-                return false;
-            }
-
-            return true;
+            value = null;
+            if (command == null || !command.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return false;
+            value = command.Substring(prefix.Length);
+            return !string.IsNullOrEmpty(value);
         }
     }
 }

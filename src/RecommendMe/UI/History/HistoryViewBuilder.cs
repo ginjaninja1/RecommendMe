@@ -59,7 +59,7 @@ namespace RecommendMe.UI.History
                 // Visibility isolation: for non-private records the viewer must be
                 // the sender/recipient, or the OTHER party's send permission must
                 // currently cover that recipient (approximated here via the same
-                // SendMode check used for real permission enforcement).
+                // send-policy check used for real permission enforcement).
                 if (!isSender && !isRecipient)
                 {
                     var senderEntry = adminSettings.UserAccess.FirstOrDefault(u => u.UserId == r.SentByUserId);

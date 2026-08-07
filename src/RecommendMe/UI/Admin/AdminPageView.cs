@@ -1,129 +1,89 @@
-﻿using System.Linq;
+using System;
+using System.Linq;
 using System.Threading.Tasks;
 using MediaBrowser.Controller;
-using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Logging;
 using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Plugins.UI.Views;
-using RecommendMe.Models;
+using MediaBrowser.Model.Serialization;
 using RecommendMe.UIBaseClasses.Views;
 
 namespace RecommendMe.UI.Admin
 {
-    /// <summary>
-    /// Admin permissions page. Every toggle/button is its own instantly-saved
-    /// command (mirroring the library/path toggles on the original template's
-    /// ConfigPageView) rather than a batch "Save" - so admins see the effect
-    /// of each change immediately and there is no unsaved-changes state to lose.
-    /// </summary>
     internal class AdminPageView : PluginPageView
     {
         private readonly ILogger logger;
+        private readonly IServerApplicationHost applicationHost;
+        private readonly IJsonSerializer serializer;
 
         public AdminPageView(PluginInfo pluginInfo, IServerApplicationHost applicationHost, ILogger logger)
             : base(pluginInfo.Id)
         {
             this.logger = logger;
-
+            this.applicationHost = applicationHost;
+            this.serializer = applicationHost.Resolve<IJsonSerializer>();
             this.ShowSave = false;
             this.ShowBack = false;
-
-            this.RebuildContentData();
+            this.Rebuild(new AdminSettingsUI());
         }
 
-        private void RebuildContentData()
+        private void Rebuild(AdminSettingsUI state)
         {
-            var allUsers = Plugin.Instance.GetAllUsers();
-
-            foreach (var user in allUsers)
+            var users = Plugin.Instance.GetAllUsers();
+            foreach (var user in users)
             {
                 Plugin.Instance.PermissionService.EnsureUserAccessEntryAsync(user).GetAwaiter().GetResult();
             }
 
             var settings = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult();
-
-            this.ContentData = AdminViewBuilder.Build(settings, allUsers);
+            this.ContentData = AdminViewBuilder.Build(settings, users, state);
         }
 
         public override Task<IPluginUIView> RunCommand(string itemId, string commandId, string data)
         {
-            var mutated = true;
+            var state = string.IsNullOrEmpty(data)
+                ? (AdminSettingsUI)this.ContentData
+                : this.serializer.DeserializeFromString<AdminSettingsUI>(data) ?? new AdminSettingsUI();
 
-            if (AdminCommands.TryParseMediaType(commandId, out var mediaType))
+            if (commandId == AdminCommands.ToggleExpansion)
             {
-                Plugin.Instance.AdminSettingsStore.MutateAsync(s => ToggleListMembership(s.GloballyAllowedMediaTypes, mediaType))
-                    .GetAwaiter().GetResult();
+                Plugin.Instance.AdminSettingsStore.MutateAsync(s => s.AlwaysExpandUsersAndGroups = !s.AlwaysExpandUsersAndGroups).GetAwaiter().GetResult();
             }
-            else if (AdminCommands.IsNewUserDefaultSendModeToggle(commandId))
-            {
-                Plugin.Instance.AdminSettingsStore.MutateAsync(s =>
-                    s.NewUserDefaultSendMode = s.NewUserDefaultSendMode == SendMode.Everyone ? SendMode.NoOne : SendMode.Everyone)
-                    .GetAwaiter().GetResult();
-            }
-            else if (AdminCommands.IsAutoGrantToggle(commandId))
-            {
-                Plugin.Instance.AdminSettingsStore.MutateAsync(s => s.AutoGrantNewUsersToExistingSendLists = !s.AutoGrantNewUsersToExistingSendLists)
-                    .GetAwaiter().GetResult();
-            }
-            else if (AdminCommands.TryParseUserSuspended(commandId, out var suspendedUserId))
+            else if (AdminCommands.TrySuspended(commandId, out var userId))
             {
                 Plugin.Instance.AdminSettingsStore.MutateAsync(s =>
                 {
-                    var entry = s.UserAccess.FirstOrDefault(u => u.UserId == suspendedUserId);
-                    if (entry != null)
-                    {
-                        entry.AccessSuspended = !entry.AccessSuspended;
-                    }
+                    var entry = s.UserAccess.FirstOrDefault(e => e.UserId == userId);
+                    if (entry != null) entry.AccessSuspended = !entry.AccessSuspended;
                 }).GetAwaiter().GetResult();
             }
-            else if (AdminCommands.TryParseUserSendMode(commandId, out var sendModeUserId, out var sendMode))
+            else if (AdminCommands.TrySendTo(commandId, out userId))
             {
-                Plugin.Instance.AdminSettingsStore.MutateAsync(s =>
-                {
-                    var entry = s.UserAccess.FirstOrDefault(u => u.UserId == sendModeUserId);
-                    if (entry != null && (sendMode != SendMode.MyGroups || s.Groups.Any(g => g.MemberUserIds.Contains(sendModeUserId))))
-                    {
-                        entry.SendMode = sendMode;
-                    }
-                }).GetAwaiter().GetResult();
+                return Task.FromResult<IPluginUIView>(new SendToDialogView(this.PluginId, userId, this, () => this.Rebuild(state), this.applicationHost, this.logger));
             }
-            else if (AdminCommands.TryParseUserTarget(commandId, out var userId, out var targetUserId))
+            else if (AdminCommands.TryReceiveFrom(commandId, out userId))
             {
-                Plugin.Instance.AdminSettingsStore.MutateAsync(s =>
-                {
-                    var entry = s.UserAccess.FirstOrDefault(u => u.UserId == userId);
-                    if (entry != null)
-                    {
-                        ToggleListMembership(entry.AllowedTargetUserIds, targetUserId);
-                    }
-                }).GetAwaiter().GetResult();
+                return Task.FromResult<IPluginUIView>(new ReceiveFromDialogView(this.PluginId, userId, this, () => this.Rebuild(state), this.applicationHost, this.logger));
             }
-            else
+            else if (AdminCommands.TryMembership(commandId, out userId))
             {
-                mutated = false;
+                return Task.FromResult<IPluginUIView>(new UserGroupMembershipDialogView(this.PluginId, userId, this, () => this.Rebuild(state), this.applicationHost, this.logger));
+            }
+            else if (commandId == AdminCommands.DefaultPolicyRefresh)
+            {
+                return Task.FromResult<IPluginUIView>(new DefaultUserPolicyDialogView(this.PluginId, this, () => this.Rebuild(state), this.applicationHost, this.logger));
             }
 
-            if (mutated)
-            {
-                this.logger.Info("RecommendMe: admin settings updated (command '{0}')", commandId);
-            }
-
-            this.RebuildContentData();
+            this.logger.Info("RecommendMe: admin users command '{0}'", commandId ?? "(null)");
+            this.Rebuild(state);
             this.RaiseUIViewInfoChanged();
-
             return Task.FromResult<IPluginUIView>(this);
         }
 
-        private static void ToggleListMembership<T>(System.Collections.Generic.List<T> list, T value)
+        public override void OnDialogResult(IPluginUIView dialogView, bool completedOk, object data)
         {
-            if (list.Contains(value))
-            {
-                list.Remove(value);
-            }
-            else
-            {
-                list.Add(value);
-            }
+            this.Rebuild((AdminSettingsUI)this.ContentData);
+            this.RaiseUIViewInfoChanged();
         }
     }
 }

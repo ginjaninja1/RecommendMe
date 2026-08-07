@@ -33,6 +33,12 @@ namespace RecommendMe.UI.Recommend
                 new EditorSelectOption(currentUser.Name, currentUser.Name + " (yourself)")
             };
 
+            var allUsers = plugin.GetAllUsers();
+            foreach (var user in allUsers)
+            {
+                await plugin.PermissionService.EnsureUserAccessEntryAsync(user).ConfigureAwait(false);
+            }
+
             var currentUserEntry = await plugin.PermissionService.EnsureUserAccessEntryAsync(currentUser).ConfigureAwait(false);
             var settings = await plugin.AdminSettingsStore.GetAsync().ConfigureAwait(false);
             if (currentUserEntry.AccessSuspended)
@@ -41,14 +47,14 @@ namespace RecommendMe.UI.Recommend
                 return choices;
             }
 
-            foreach (var candidate in plugin.GetAllUsers())
+            foreach (var candidate in allUsers)
             {
                 if (candidate.InternalId == currentUser.InternalId)
                 {
                     continue;
                 }
 
-                var candidateEntry = await plugin.PermissionService.EnsureUserAccessEntryAsync(candidate).ConfigureAwait(false);
+                var candidateEntry = settings.UserAccess.First(u => u.UserId == candidate.InternalId);
                 if (candidateEntry.AccessSuspended)
                 {
                     continue;

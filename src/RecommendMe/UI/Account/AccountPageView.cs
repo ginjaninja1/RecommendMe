@@ -93,6 +93,16 @@ namespace RecommendMe.UI.Account
                     prefs.SenderPreferences.Add(senderPref);
                 }
 
+                // A disabled child toggle must also be read-only at the command
+                // boundary; preserve the media choices while the sender's
+                // master Accept recommendations switch is off.
+                if (senderPref.Blocked)
+                {
+                    this.ContentData = AccountViewBuilder.BuildAsync(currentUser).GetAwaiter().GetResult();
+                    this.RaiseUIViewInfoChanged();
+                    return Task.FromResult<IPluginUIView>(this);
+                }
+
                 if (senderPref.OptedOutMediaTypes.Contains(mediaType))
                 {
                     senderPref.OptedOutMediaTypes.Remove(mediaType);
