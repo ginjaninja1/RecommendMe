@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.ComponentModel;
 using Emby.Web.GenericEdit;
+using Emby.Web.GenericEdit.Common;
 using Emby.Web.GenericEdit.Elements;
 using Emby.Web.GenericEdit.Elements.List;
 using MediaBrowser.Model.Attributes;
@@ -32,8 +33,12 @@ namespace RecommendMe.UI.Recommend
         [AutoPostBack(RecommendCommands.UpdateFormState, nameof(SelectedTargetUserName))]
         public string SelectedTargetUserName { get; set; }
 
+        // NOTE: must be List<EditorSelectOption> (Value/Name pairs), not
+        // List<string>. The GenericEdit client renders each entry's .Value
+        // and .Name; a bare string has neither, which is why this rendered
+        // as N unselectable "undefined" rows for as many users as existed.
         [Browsable(false)]
-        public List<string> TargetUserChoices { get; set; } = new List<string>();
+        public List<EditorSelectOption> TargetUserChoices { get; set; } = new List<EditorSelectOption>();
 
         [DisplayName("Private recommendation")]
         [Description("Only you and the recipient will see this in the recommendation history.")]

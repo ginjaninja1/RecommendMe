@@ -1,6 +1,8 @@
 ﻿using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using Emby.Web.GenericEdit;
+using Emby.Web.GenericEdit.Common;
 using Emby.Web.GenericEdit.Elements;
 using Emby.Web.GenericEdit.Elements.DxGrid;
 using MediaBrowser.Model.Attributes;
@@ -45,8 +47,11 @@ namespace RecommendMe.UI.History
         [AutoPostBack(HistoryCommands.Refresh, nameof(SelectedDateRange))]
         public string SelectedDateRange { get; set; } = HistoryFilters.Last3Months;
 
+        // NOTE: must be List<EditorSelectOption>, not List<string> - see the
+        // matching note on RecommendUI.TargetUserChoices for why a bare
+        // string list renders as unselectable "undefined" entries.
         [Browsable(false)]
-        public List<string> DateRangeChoices { get; set; } = new List<string>(HistoryFilters.AllDateRanges);
+        public List<EditorSelectOption> DateRangeChoices { get; set; } = ToOptions(HistoryFilters.AllDateRanges);
 
         [DisplayName("Recommended to")]
         [SelectItemsSource(nameof(RecipientChoices))]
@@ -54,7 +59,7 @@ namespace RecommendMe.UI.History
         public string SelectedRecipient { get; set; } = HistoryFilters.CurrentUser;
 
         [Browsable(false)]
-        public List<string> RecipientChoices { get; set; } = new List<string>(HistoryFilters.AllRecipientFilters);
+        public List<EditorSelectOption> RecipientChoices { get; set; } = ToOptions(HistoryFilters.AllRecipientFilters);
 
         [DisplayName("From")]
         [SelectItemsSource(nameof(SenderChoices))]
@@ -62,9 +67,13 @@ namespace RecommendMe.UI.History
         public string SelectedSender { get; set; } = HistoryFilters.Anyone;
 
         [Browsable(false)]
-        public List<string> SenderChoices { get; set; } = new List<string> { HistoryFilters.Anyone };
+        public List<EditorSelectOption> SenderChoices { get; set; } = ToOptions(new[] { HistoryFilters.Anyone });
 
         /// <summary>The actual grid. Columns are static; DataSource is rebuilt on every refresh.</summary>
         public DxDataGrid Grid { get; set; }
+
+        /// <summary>Builds Value==Name option pairs for filter choices where the raw filter constant is also the label.</summary>
+        internal static List<EditorSelectOption> ToOptions(IEnumerable<string> values) =>
+            values.Select(v => new EditorSelectOption(v, v)).ToList();
     }
 }

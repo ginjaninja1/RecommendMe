@@ -27,12 +27,16 @@ namespace RecommendMe.UI.History
             var ui = new HistoryUI
             {
                 Grid = HistoryViewBuilder.BuildEmptyGrid(),
-                SenderChoices = new[] { HistoryFilters.Anyone }
-                    .Concat(Plugin.Instance.GetAllUsers().Select(u => u.Name))
-                    .ToList()
+                SenderChoices = HistoryUI.ToOptions(
+                    new[] { HistoryFilters.Anyone }.Concat(Plugin.Instance.GetAllUsers().Select(u => u.Name)))
             };
 
             this.ContentData = ui;
+
+            // Full-screen, matching the pattern used for equivalent dialogs
+            // in ListProtection (RepairDialogView / GroundTruthDialogView):
+            // set once here, exposed via the get-only override below.
+            this.ShowDialogFullScreen = true;
 
             // Populate the default filtered view up front, mirroring how
             // ConfigPageView eagerly builds its ContentData in its own
@@ -45,6 +49,8 @@ namespace RecommendMe.UI.History
 
             ui.Grid.Options.dataSource = rows;
         }
+
+        public override bool ShowDialogFullScreen { get; }
 
         public override async Task<IPluginUIView> RunCommand(string itemId, string commandId, string data)
         {

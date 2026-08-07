@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Emby.Web.GenericEdit.Common;
 using Emby.Web.GenericEdit.Elements;
 using Emby.Web.GenericEdit.Elements.List;
 using MediaBrowser.Controller.Entities;
@@ -17,11 +18,17 @@ namespace RecommendMe.UI.Recommend
     /// </summary>
     internal static class RecommendViewBuilder
     {
-        public static async Task<List<string>> BuildTargetUserChoicesAsync(User currentUser)
+        public static async Task<List<EditorSelectOption>> BuildTargetUserChoicesAsync(User currentUser)
         {
             var plugin = Plugin.Instance;
 
-            var choices = new List<string> { currentUser.Name + " (yourself)" };
+            // Value is always the raw, unmodified username - ResolveTargetUser
+            // matches on this. Only the display Name gets the "(yourself)"
+            // decoration, so there's no fragile string-suffix matching.
+            var choices = new List<EditorSelectOption>
+            {
+                new EditorSelectOption(currentUser.Name, currentUser.Name + " (yourself)")
+            };
 
             var currentUserEntry = await plugin.PermissionService.EnsureUserAccessEntryAsync(currentUser).ConfigureAwait(false);
             if (currentUserEntry.AccessSuspended)
@@ -45,7 +52,7 @@ namespace RecommendMe.UI.Recommend
 
                 if (PermissionService.IsTargetAllowed(currentUserEntry, candidate.InternalId))
                 {
-                    choices.Add(candidate.Name);
+                    choices.Add(new EditorSelectOption(candidate.Name, candidate.Name));
                 }
             }
 
@@ -75,20 +82,20 @@ namespace RecommendMe.UI.Recommend
             return list;
         }
 
-        /// <summary>Resolves the display name used in TargetUserChoices back to a real User.</summary>
-        public static User ResolveTargetUser(string choice, User currentUser)
+        /// <summary>Resolves the Value posted back from TargetUserChoices (a raw username) to a real User.</summary>
+        public static User ResolveTargetUser(string selectedValue, User currentUser)
         {
-            if (string.IsNullOrEmpty(choice))
+            if (string.IsNullOrEmpty(selectedValue))
             {
                 return null;
             }
 
-            if (choice == currentUser.Name + " (yourself)")
+            if (selectedValue == currentUser.Name)
             {
                 return currentUser;
             }
 
-            return Plugin.Instance.GetAllUsers().FirstOrDefault(u => u.Name == choice);
+            return Plugin.Instance.GetAllUsers().FirstOrDefault(u => u.Name == selectedValue);
         }
 
         public static GenericItemList BuildStatusMessage(string primaryText, bool success)
