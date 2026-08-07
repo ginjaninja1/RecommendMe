@@ -53,7 +53,7 @@ namespace RecommendMe.UI.Admin
                 }).GetAwaiter().GetResult();
 
                 this.logger.Info(
-                    "RecommendMe: watched recommendation settings saved; clear={0}, prevent={1}.",
+                    "Watched recommendation settings saved; clear={0}, prevent={1}.",
                     state.ClearWatchedRecommendations,
                     state.PreventWatchedRecommendations);
             }
@@ -74,12 +74,12 @@ namespace RecommendMe.UI.Admin
                         .RenameInstantiatedCollectionsAsync(state.RecommendationCollectionPrefix, state.RecommendationCollectionSuffix)
                         .GetAwaiter().GetResult();
                     SetStatus(state, $"Collection naming saved. Renamed {result.Renamed} existing collection(s); skipped {result.Skipped} stale or ownerless registry entry/entries.", true);
-                    this.logger.Info("RecommendMe: collection naming applied; renamed={0}, skipped={1}.", result.Renamed, result.Skipped);
+                    this.logger.Info("Collection naming applied; renamed={0}, skipped={1}.", result.Renamed, result.Skipped);
                 }
                 catch (Exception ex)
                 {
                     SetStatus(state, "Collection naming saved, but one or more existing collections could not be renamed. See the server log.", false);
-                    this.logger.ErrorException("RecommendMe: failed while applying collection names", ex);
+                    this.logger.ErrorException("Failed while applying collection names", ex);
                 }
             }
 

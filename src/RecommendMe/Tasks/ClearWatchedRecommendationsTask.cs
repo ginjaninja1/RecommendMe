@@ -28,7 +28,7 @@ namespace RecommendMe.Tasks
             var settings = await plugin.AdminSettingsStore.GetAsync().ConfigureAwait(false);
             if (!settings.ClearWatchedRecommendations)
             {
-                plugin.Logger.Info("RecommendMe: watched-recommendation task exited because the setting is disabled.");
+                plugin.Logger.Info("Watched-recommendation task exited because the setting is disabled.");
                 progress?.Report(100);
                 return;
             }
@@ -36,7 +36,7 @@ namespace RecommendMe.Tasks
             var removed = await plugin.RecommendationService
                 .ClearWatchedRecommendationsAsync(cancellationToken, progress)
                 .ConfigureAwait(false);
-            plugin.Logger.Info("RecommendMe: watched-recommendation task removed {0} item(s).", removed);
+            plugin.Logger.Info("Watched-recommendation task removed {0} item(s).", removed);
         }
     }
 }

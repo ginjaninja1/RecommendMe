@@ -32,7 +32,7 @@ namespace RecommendMe.UI.Admin
                     if (s.GloballyAllowedMediaTypes.Contains(mediaType)) s.GloballyAllowedMediaTypes.Remove(mediaType);
                     else s.GloballyAllowedMediaTypes.Add(mediaType);
                 }).GetAwaiter().GetResult();
-                this.logger.Info("RecommendMe: media permission updated for {0}", mediaType);
+                this.logger.Info("Media permission updated for {0}", mediaType);
             }
             this.Rebuild();
             this.RaiseUIViewInfoChanged();

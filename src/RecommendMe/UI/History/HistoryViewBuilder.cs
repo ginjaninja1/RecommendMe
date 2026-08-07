@@ -44,7 +44,7 @@ namespace RecommendMe.UI.History
             var viewerEntry = adminSettings.UserAccess.First(u => u.UserId == viewer.InternalId);
 
             plugin.Logger.Debug(
-                "RecommendMe: History - viewer={0} ({1}), total records={2}",
+                "History - viewer={0} ({1}), total records={2}",
                 viewer.Name, viewer.InternalId, all.Count);
 
             var visible = all.Where(r =>
@@ -85,7 +85,7 @@ namespace RecommendMe.UI.History
             }).ToList();
 
             plugin.Logger.Debug(
-                "RecommendMe: History - viewer={0}, records visible after privacy/visibility isolation={1}",
+                "History - viewer={0}, records visible after privacy/visibility isolation={1}",
                 viewer.Name, visible.Count);
 
             return visible

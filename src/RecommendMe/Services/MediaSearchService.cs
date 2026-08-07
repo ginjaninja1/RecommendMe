@@ -30,7 +30,7 @@ namespace RecommendMe.Services
             if (string.IsNullOrWhiteSpace(searchTerm) || allowedMediaTypes == null || allowedMediaTypes.Count == 0)
             {
                 this.logger.Warn(
-                    "RecommendMe: media search skipped - user={0} ({1}), term='{2}', termLength={3}, allowedTypeCount={4}.",
+                    "Media search skipped - user={0} ({1}), term='{2}', termLength={3}, allowedTypeCount={4}.",
                     searchingUser?.Name ?? "(null)",
                     searchingUser?.InternalId ?? 0,
                     LogValue(searchTerm),
@@ -49,7 +49,7 @@ namespace RecommendMe.Services
             var includePeople = effectiveMediaTypes.Contains(Models.RecommendableMediaTypes.Person);
 
             this.logger.Info(
-                "RecommendMe: media search query - user={0} ({1}), term='{2}', termLength={3}, configuredTypes=[{4}], regularTypes=[{5}] with isVirtualItem=false, queryVirtualPeople={6}, limit={7}.",
+                "Media search query - user={0} ({1}), term='{2}', termLength={3}, configuredTypes=[{4}], regularTypes=[{5}] with isVirtualItem=false, queryVirtualPeople={6}, limit={7}.",
                 searchingUser?.Name ?? "(null)",
                 searchingUser?.InternalId ?? 0,
                 LogValue(searchTerm),
@@ -84,7 +84,7 @@ namespace RecommendMe.Services
                 results.Take(10).Select(item => $"{item.GetType().Name}:{LogValue(item.Name)} ({item.InternalId})"));
 
             this.logger.Info(
-                "RecommendMe: media search result - term='{0}', regularCount={1}, personCount={2}, returnedCount={3}, elapsedMs={4}, items=[{5}].",
+                "Media search result - term='{0}', regularCount={1}, personCount={2}, returnedCount={3}, elapsedMs={4}, items=[{5}].",
                 LogValue(searchTerm),
                 regularResults.Length,
                 personResults.Length,
@@ -95,7 +95,7 @@ namespace RecommendMe.Services
             if (results.Length == 0)
             {
                 this.logger.Warn(
-                    "RecommendMe: media search returned no items - term='{0}', PersonConfigured={1}, PersonQueriedAsVirtual={2}. Check that Emby exposes matching items to user {3} ({4}).",
+                    "Media search returned no items - term='{0}', PersonConfigured={1}, PersonQueriedAsVirtual={2}. Check that Emby exposes matching items to user {3} ({4}).",
                     LogValue(searchTerm),
                     allowedMediaTypes.Contains(Models.RecommendableMediaTypes.Person),
                     includePeople,

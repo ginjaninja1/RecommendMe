@@ -152,7 +152,7 @@ namespace RecommendMe.UI.Recommend
             catch (Exception ex)
             {
                 this.logger.ErrorException(
-                    $"RecommendMe: media search failed for user {currentUser.Name} ({currentUser.InternalId}), term '{LogValue(ui.SearchTerm)}'",
+                    $"Media search failed for user {currentUser.Name} ({currentUser.InternalId}), term '{LogValue(ui.SearchTerm)}'",
                     ex);
                 ui.SearchResults = new Emby.Web.GenericEdit.Elements.List.GenericItemList();
                 ui.StatusMessage = RecommendViewBuilder.BuildStatusMessage("Search failed. Check the Emby server log for RecommendMe diagnostics.", false);
@@ -203,7 +203,7 @@ namespace RecommendMe.UI.Recommend
             }
             catch (Exception ex)
             {
-                this.logger.ErrorException("RecommendMe: error sending recommendation", ex);
+                this.logger.ErrorException("Error sending recommendation", ex);
                 RecommendViewBuilder.TrySetRecommendationStatus(ui.SearchResults, itemId, "Something went wrong sending that recommendation.", false);
                 ui.StatusMessage = new Emby.Web.GenericEdit.Elements.List.GenericItemList();
             }

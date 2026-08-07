@@ -93,7 +93,7 @@ namespace RecommendMe.UI.Admin
 
         public override Task<IPluginUIView> RunCommand(string itemId, string commandId, string data)
         {
-            this.logger.Info("RecommendMe: GroupMembersDialog command '{0}' for group '{1}' ({2})", commandId ?? "(null)", this.groupName, this.groupId);
+            this.logger.Info("GroupMembersDialog command '{0}' for group '{1}' ({2})", commandId ?? "(null)", this.groupName, this.groupId);
             var state = string.IsNullOrEmpty(data) ? (GroupMembersUI)this.ContentData : this.serializer.DeserializeFromString<GroupMembersUI>(data) ?? new GroupMembersUI();
             if (GroupsCommands.TryToggleUser(commandId, out var parsedGroupId, out var userId) && parsedGroupId == this.groupId)
             {
@@ -103,12 +103,12 @@ namespace RecommendMe.UI.Admin
                     if (group == null) return;
                     if (group.MemberUserIds.Contains(userId)) group.MemberUserIds.Remove(userId); else group.MemberUserIds.Add(userId);
                 }).GetAwaiter().GetResult();
-                this.logger.Info("RecommendMe: toggled user {0} membership in group '{1}' ({2})", userId, this.groupName, this.groupId);
+                this.logger.Info("Toggled user {0} membership in group '{1}' ({2})", userId, this.groupName, this.groupId);
             }
             else if (string.Equals(commandId, "DialogCancel", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(commandId, "DialogOk", StringComparison.OrdinalIgnoreCase))
             {
-                this.logger.Info("RecommendMe: group membership dialog closed for '{0}' ({1})", this.groupName, this.groupId);
+                this.logger.Info("Group membership dialog closed for '{0}' ({1})", this.groupName, this.groupId);
                 this.rebuildParentContent();
                 return Task.FromResult(this.parentPageView);
             }
@@ -166,7 +166,7 @@ namespace RecommendMe.UI.Admin
 
         public override Task<IPluginUIView> RunCommand(string itemId, string commandId, string data)
         {
-            this.logger.Info("RecommendMe: RenameGroupDialog command '{0}' for group '{1}' ({2})", commandId ?? "(null)", this.currentName, this.groupId);
+            this.logger.Info("RenameGroupDialog command '{0}' for group '{1}' ({2})", commandId ?? "(null)", this.currentName, this.groupId);
             if (string.Equals(commandId, GroupsCommands.ConfirmRename, StringComparison.OrdinalIgnoreCase))
             {
                 try
@@ -194,12 +194,12 @@ namespace RecommendMe.UI.Admin
 
                     if (renamed)
                     {
-                        this.logger.Info("RecommendMe: renamed group '{0}' ({1}) to '{2}'", this.currentName, this.groupId, name);
+                        this.logger.Info("Renamed group '{0}' ({1}) to '{2}'", this.currentName, this.groupId, name);
                         this.rebuildParentContent();
                         return Task.FromResult(this.parentPageView);
                     }
 
-                    this.logger.Info("RecommendMe: rename target '{0}' already exists", name);
+                    this.logger.Info("Rename target '{0}' already exists", name);
                     ui.ValidationStatus = new CaptionItem($"✗ A group named '{name}' already exists");
                     this.ContentData = ui;
                     this.RaiseUIViewInfoChanged();
@@ -207,7 +207,7 @@ namespace RecommendMe.UI.Admin
                 }
                 catch (Exception ex)
                 {
-                    this.logger.ErrorException("RecommendMe: group rename dialog failed", ex);
+                    this.logger.ErrorException("Group rename dialog failed", ex);
                     return Task.FromResult<IPluginUIView>(this);
                 }
             }
@@ -215,7 +215,7 @@ namespace RecommendMe.UI.Admin
             if (string.Equals(commandId, "DialogCancel", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(commandId, "DialogOk", StringComparison.OrdinalIgnoreCase))
             {
-                this.logger.Info("RecommendMe: group rename dialog closed for '{0}' ({1})", this.currentName, this.groupId);
+                this.logger.Info("Group rename dialog closed for '{0}' ({1})", this.currentName, this.groupId);
                 this.rebuildParentContent();
                 return Task.FromResult(this.parentPageView);
             }
@@ -295,7 +295,7 @@ namespace RecommendMe.UI.Admin
 
         public override Task<IPluginUIView> RunCommand(string itemId, string commandId, string data)
         {
-            this.logger.Info("RecommendMe: DeleteGroupDialog command '{0}' for group '{1}' ({2})", commandId ?? "(null)", this.groupName, this.groupId);
+            this.logger.Info("DeleteGroupDialog command '{0}' for group '{1}' ({2})", commandId ?? "(null)", this.groupName, this.groupId);
             if (string.Equals(commandId, GroupsCommands.ConfirmDelete, StringComparison.OrdinalIgnoreCase))
             {
                 try
@@ -304,12 +304,12 @@ namespace RecommendMe.UI.Admin
                     if (ui != null && string.Equals(ui.Confirmation?.Trim(), this.groupName, StringComparison.OrdinalIgnoreCase))
                     {
                         Plugin.Instance.AdminSettingsStore.MutateAsync(s => s.Groups.RemoveAll(g => g.Id == this.groupId)).GetAwaiter().GetResult();
-                        this.logger.Info("RecommendMe: deleted group '{0}' ({1})", this.groupName, this.groupId);
+                        this.logger.Info("Deleted group '{0}' ({1})", this.groupName, this.groupId);
                         this.rebuildParentContent();
                         return Task.FromResult(this.parentPageView);
                     }
 
-                    this.logger.Info("RecommendMe: delete confirmation did not match group '{0}'", this.groupName);
+                    this.logger.Info("Delete confirmation did not match group '{0}'", this.groupName);
                     var group = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult().Groups.FirstOrDefault(g => g.Id == this.groupId);
                     this.ContentData = this.BuildContent(group?.MemberUserIds.ToArray(), "✗ Name did not match — try again");
                     this.RaiseUIViewInfoChanged();
@@ -317,7 +317,7 @@ namespace RecommendMe.UI.Admin
                 }
                 catch (Exception ex)
                 {
-                    this.logger.ErrorException("RecommendMe: group delete dialog failed", ex);
+                    this.logger.ErrorException("Group delete dialog failed", ex);
                     return Task.FromResult<IPluginUIView>(this);
                 }
             }
@@ -325,7 +325,7 @@ namespace RecommendMe.UI.Admin
             if (string.Equals(commandId, "DialogCancel", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(commandId, "DialogOk", StringComparison.OrdinalIgnoreCase))
             {
-                this.logger.Info("RecommendMe: group delete dialog closed for '{0}' ({1})", this.groupName, this.groupId);
+                this.logger.Info("Group delete dialog closed for '{0}' ({1})", this.groupName, this.groupId);
                 this.rebuildParentContent();
                 return Task.FromResult(this.parentPageView);
             }

@@ -82,7 +82,7 @@ namespace RecommendMe.UIBaseClasses.Store
                 }
                 catch (Exception ex)
                 {
-                    this.logger.ErrorException("Error loading plugin options for {0} from {1}", ex, this.pluginFullName, this.OptionsFilePath);
+                    this.logger.ErrorException("Error loading plugin options from {0}", ex, this.OptionsFilePath);
                     this.options = tempOptions;
                 }
 

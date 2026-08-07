@@ -188,7 +188,7 @@ namespace RecommendMe
                 }
                 catch (Exception ex)
                 {
-                    this.logger.ErrorException("RecommendMe: error handling watched-item cleanup", ex);
+                    this.logger.ErrorException("Error handling watched-item cleanup", ex);
                 }
             });
         }

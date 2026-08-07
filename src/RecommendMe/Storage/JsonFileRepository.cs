@@ -153,7 +153,7 @@ namespace RecommendMe.Storage
             }
             catch (Exception ex)
             {
-                this.logger.ErrorException("Error reading RecommendMe data file {0}", ex, this.FilePath);
+                this.logger.ErrorException("Error reading data file {0}", ex, this.FilePath);
                 return new T();
             }
         }

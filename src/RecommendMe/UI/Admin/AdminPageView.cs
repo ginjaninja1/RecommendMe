@@ -74,7 +74,7 @@ namespace RecommendMe.UI.Admin
                 return Task.FromResult<IPluginUIView>(new DefaultUserPolicyDialogView(this.PluginId, this, () => this.Rebuild(state), this.applicationHost, this.logger));
             }
 
-            this.logger.Info("RecommendMe: admin users command '{0}'", commandId ?? "(null)");
+            this.logger.Info("Admin users command '{0}'", commandId ?? "(null)");
             this.Rebuild(state);
             this.RaiseUIViewInfoChanged();
             return Task.FromResult<IPluginUIView>(this);

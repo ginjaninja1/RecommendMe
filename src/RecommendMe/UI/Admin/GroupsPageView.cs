@@ -121,7 +121,7 @@ namespace RecommendMe.UI.Admin
 
                     if (deleted)
                     {
-                        this.logger.Info("RecommendMe: deleted empty group '{0}' ({1}) without confirmation", group.Name, group.Id);
+                        this.logger.Info("Deleted empty group '{0}' ({1}) without confirmation", group.Name, group.Id);
                         changed = true;
                     }
                     else if (nowHasMembers)
@@ -147,7 +147,7 @@ namespace RecommendMe.UI.Admin
                 }
             }
 
-            if (changed) this.logger.Info("RecommendMe: groups updated (command '{0}')", commandId);
+            if (changed) this.logger.Info("Groups updated (command '{0}')", commandId);
             this.Rebuild(state);
             this.RaiseUIViewInfoChanged();
             return Task.FromResult<IPluginUIView>(this);

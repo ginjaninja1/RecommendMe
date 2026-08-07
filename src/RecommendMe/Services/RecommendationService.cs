@@ -91,14 +91,14 @@ namespace RecommendMe.Services
             bool isPrivate)
         {
             this.logger.Debug(
-                "RecommendMe: SendRecommendationAsync - sender={0} ({1}), recipient={2} ({3}), item={4} '{5}' ({6}), private={7}",
+                "SendRecommendationAsync - sender={0} ({1}), recipient={2} ({3}), item={4} '{5}' ({6}), private={7}",
                 sender.Name, sender.InternalId,
                 recipient.Name, recipient.InternalId,
                 item.InternalId, item.Name, mediaType,
                 isPrivate);
 
             var permission = await this.permissionService.CanSendAsync(sender, recipient, mediaType).ConfigureAwait(false);
-            this.logger.Debug("RecommendMe: permission check result = {0}", permission);
+            this.logger.Debug("Permission check result = {0}", permission);
             switch (permission)
             {
                 case SendPermissionResult.AdminBlocked:
@@ -116,7 +116,7 @@ namespace RecommendMe.Services
                 if (recipientData != null && recipientData.Played)
                 {
                     this.logger.Debug(
-                        "RecommendMe: blocked - item {0} already watched by {1}.",
+                        "Blocked - item {0} already watched by {1}.",
                         item.InternalId,
                         recipient.Name);
                     return RecommendationResult.AlreadyWatchedByRecipient;
@@ -129,7 +129,7 @@ namespace RecommendMe.Services
             if (alreadyInCollection)
             {
                 this.logger.Debug(
-                    "RecommendMe: blocked - item {0} already in {1}'s recommendation collection.",
+                    "Blocked - item {0} already in {1}'s recommendation collection.",
                     item.InternalId,
                     recipient.Name);
                 return RecommendationResult.AlreadyInRecipientCollection;
@@ -153,7 +153,7 @@ namespace RecommendMe.Services
             this.notificationService.NotifyRecommendationReceived(recipient, sender, item.Name, mediaType);
 
             this.logger.Debug(
-                "RecommendMe: recommendation {0} recorded and item {1} added to {2}'s collection.",
+                "Recommendation {0} recorded and item {1} added to {2}'s collection.",
                 record.RecommendationId,
                 item.InternalId,
                 recipient.Name);
@@ -182,7 +182,7 @@ namespace RecommendMe.Services
             await this.collectionSyncService.RemoveItemAsync(user, itemId).ConfigureAwait(false);
 
             this.logger.Info(
-                "RecommendMe: auto-removed item {0} from {1}'s recommendation collection after it was watched.",
+                "Auto-removed item {0} from {1}'s recommendation collection after it was watched.",
                 itemId,
                 user.Name);
         }

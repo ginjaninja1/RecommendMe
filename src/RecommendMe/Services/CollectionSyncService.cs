@@ -91,7 +91,7 @@ namespace RecommendMe.Services
                 }
 
                 this.logger.Warn(
-                    "RecommendMe: registered collection id {0} for user {1} no longer resolves to a BoxSet; recreating.",
+                    "Registered collection id {0} for user {1} no longer resolves to a BoxSet; recreating.",
                     registryEntry.CollectionId,
                     recipient.Name);
             }
@@ -111,7 +111,7 @@ namespace RecommendMe.Services
                 // couldn't resolve seedItem via ILibraryManager.GetItemById -
                 // surface that plainly instead of NRE-ing on created.InternalId.
                 throw new System.InvalidOperationException(
-                    $"RecommendMe: CreateCollection returned no BoxSet for '{name}' (seed item {seedItem.InternalId}).");
+                    $"CreateCollection returned no BoxSet for '{name}' (seed item {seedItem.InternalId}).");
             }
 
             await this.registryStore.RegisterAsync(recipient.InternalId, created.InternalId, name, PublicId(created)).ConfigureAwait(false);
@@ -151,7 +151,7 @@ namespace RecommendMe.Services
                 if (collection == null || !RegistryIdentityMatches(entry, collection))
                 {
                     result.Skipped++;
-                    this.logger.Warn("RecommendMe: skipped renaming registered collection {0}; its identity no longer matches.", entry.CollectionId);
+                    this.logger.Warn("Skipped renaming registered collection {0}; its identity no longer matches.", entry.CollectionId);
                     continue;
                 }
 
@@ -180,7 +180,7 @@ namespace RecommendMe.Services
             await this.collectionManager.AddToCollection(collection.InternalId, new[] { item.InternalId }).ConfigureAwait(false);
 
             this.logger.Debug(
-                "RecommendMe: added item {0} to collection {1} ({2}) for {3}.",
+                "Added item {0} to collection {1} ({2}) for {3}.",
                 item.InternalId,
                 collection.InternalId,
                 collection.Name,
@@ -220,7 +220,7 @@ namespace RecommendMe.Services
             if (entry == null)
             {
                 this.logger.Debug(
-                    "RecommendMe: {0} has no recommendation collection yet; item {1} cannot be a member.",
+                    "{0} has no recommendation collection yet; item {1} cannot be a member.",
                     recipient.Name,
                     itemId);
                 return false;
@@ -229,7 +229,7 @@ namespace RecommendMe.Services
             var collection = this.libraryManager.GetItemById(entry.CollectionId) as BoxSet;
             if (collection == null || !RegistryIdentityMatches(entry, collection))
             {
-                this.logger.Warn("RecommendMe: collection registry identity mismatch for user {0}.", recipient.Name);
+                this.logger.Warn("Collection registry identity mismatch for user {0}.", recipient.Name);
                 return false;
             }
 
@@ -242,7 +242,7 @@ namespace RecommendMe.Services
             var isMember = matchingIds.Length > 0;
 
             this.logger.Debug(
-                "RecommendMe: membership check - item {0} in {1}'s collection {2}: {3}.",
+                "Membership check - item {0} in {1}'s collection {2}: {3}.",
                 itemId,
                 recipient.Name,
                 entry.CollectionId,
