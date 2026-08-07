@@ -3,6 +3,7 @@ using Emby.Web.GenericEdit;
 using Emby.Web.GenericEdit.Common;
 using Emby.Web.GenericEdit.Elements;
 using Emby.Web.GenericEdit.Elements.List;
+using MediaBrowser.Model.Attributes;
 
 namespace RecommendMe.UI.Admin
 {
@@ -15,10 +16,12 @@ namespace RecommendMe.UI.Admin
 
         [DisplayName("Clear watched recommendations")]
         [Description("When enabled, watched recommendations are removed on playback and by the user-configurable RecommendMe scheduled task.")]
+        [AutoPostBack(CollectionSettingsCommands.SaveWatchedSettings, nameof(ClearWatchedRecommendations))]
         public bool ClearWatchedRecommendations { get; set; }
 
         [DisplayName("Prevent Watched Recommendations")]
         [Description("When enabled, an item cannot be recommended to a user who has already watched it. Items without a watched status can still be recommended.")]
+        [AutoPostBack(CollectionSettingsCommands.SaveWatchedSettings, nameof(PreventWatchedRecommendations))]
         public bool PreventWatchedRecommendations { get; set; }
 
         public CaptionItem NamingHeading { get; set; } = new CaptionItem("Collection Naming");
@@ -33,11 +36,11 @@ namespace RecommendMe.UI.Admin
         {
             new GenericListItem
             {
-                PrimaryText = "Apply collection settings",
+                PrimaryText = "Apply Collection Naming",
                 SecondaryText = "Updates existing plugin-owned collections without creating collections for other users.",
                 Icon = IconNames.save,
                 Status = ItemStatus.Succeeded,
-                Button1 = new ButtonItem("Apply") { CommandId = CollectionSettingsCommands.Apply }
+                Button1 = new ButtonItem("Apply Collection Naming") { CommandId = CollectionSettingsCommands.Apply }
             }
         };
     }
@@ -45,5 +48,6 @@ namespace RecommendMe.UI.Admin
     internal static class CollectionSettingsCommands
     {
         public const string Apply = "collection-settings-apply";
+        public const string SaveWatchedSettings = "collection-settings-save-watched";
     }
 }
