@@ -6,17 +6,23 @@ namespace RecommendMe.UI.Admin
     {
         public const string Refresh = "groups-refresh";
         public const string Create = "groups-create";
-        public const string Rename = "groups-rename";
-        public const string Delete = "groups-delete";
-        private const string SelectPrefix = "group-select:";
+        public const string ValidateRename = "groups-validate-rename";
+        public const string ConfirmDelete = "groups-confirm-delete";
+        private const string MembersPrefix = "group-members:";
+        private const string RenamePrefix = "group-rename:";
+        private const string DeletePrefix = "group-delete:";
         private const string TogglePrefix = "group-toggle-user:";
         private const string UserPrefix = "group-user-lookup:";
         private const string Separator = "|||";
 
-        public static string Select(string groupId) => SelectPrefix + groupId;
+        public static string Members(string groupId) => MembersPrefix + groupId;
+        public static string Rename(string groupId) => RenamePrefix + groupId;
+        public static string Delete(string groupId) => DeletePrefix + groupId;
         public static string ToggleUser(string groupId, long userId) => TogglePrefix + groupId + Separator + userId;
         public static string UserLookup(long userId) => UserPrefix + userId;
-        public static bool TrySelect(string command, out string id) => TryString(command, SelectPrefix, out id);
+        public static bool TryMembers(string command, out string id) => TryString(command, MembersPrefix, out id);
+        public static bool TryRename(string command, out string id) => TryString(command, RenamePrefix, out id);
+        public static bool TryDelete(string command, out string id) => TryString(command, DeletePrefix, out id);
         public static bool TryUserLookup(string command, out long id)
         {
             id = 0;

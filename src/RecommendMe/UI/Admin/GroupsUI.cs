@@ -11,35 +11,24 @@ namespace RecommendMe.UI.Admin
         public override string EditorTitle => "Groups";
         public override string EditorDescription => "Create groups and manage membership without displaying the full server user list.";
 
-        public CaptionItem GroupHeading { get; set; } = new CaptionItem("Find or create a group");
-        [DisplayName("Group search")]
-        [AutoPostBack(GroupsCommands.Refresh, nameof(GroupSearch))]
-        public string GroupSearch { get; set; } = string.Empty;
-        public GenericItemList GroupResults { get; set; } = new GenericItemList();
-
-        [DisplayName("New group name")]
+        public CaptionItem CreateHeading { get; set; } = new CaptionItem("Create New Group");
+        [DisplayName("Group name")]
         public string NewGroupName { get; set; } = string.Empty;
         public GenericItemList CreateAction { get; set; } = new GenericItemList
         {
-            new GenericListItem { PrimaryText = "Create a new group", Icon = IconNames.group_add, Button1 = new ButtonItem("Create") { CommandId = GroupsCommands.Create } }
+            new GenericListItem { PrimaryText = "Create", Icon = IconNames.group_add, Button1 = new ButtonItem("Create") { CommandId = GroupsCommands.Create } }
         };
+        public GenericItemList StatusMessage { get; set; } = new GenericItemList();
 
-        [Browsable(false)]
-        public string SelectedGroupId { get; set; }
-        public CaptionItem SelectedHeading { get; set; } = new CaptionItem("Selected group");
-        [DisplayName("Current members")]
-        public string CurrentMembers { get; set; } = "Select a group.";
-        [DisplayName("Rename group")]
-        public string RenameName { get; set; } = string.Empty;
-        public GenericItemList GroupActions { get; set; } = new GenericItemList();
-
-        [DisplayName("User search")]
-        [AutoPostBack(GroupsCommands.Refresh, nameof(UserSearch))]
-        public string UserSearch { get; set; } = string.Empty;
-        public GenericItemList UserResults { get; set; } = new GenericItemList();
+        public CaptionItem AvailableHeading { get; set; } = new CaptionItem("Available Groups");
+        [DisplayName("Group search")]
+        [AutoPostBack(GroupsCommands.Refresh, nameof(GroupSearch))]
+        public string GroupSearch { get; set; } = string.Empty;
+        public LabelItem GroupSearchSummary { get; set; } = new LabelItem(string.Empty);
+        public GenericItemList GroupResults { get; set; } = new GenericItemList();
 
         public CaptionItem UserLookupHeading { get; set; } = new CaptionItem("Find a user’s groups");
-        [DisplayName("User membership search")]
+        [DisplayName("User search")]
         [AutoPostBack(GroupsCommands.Refresh, nameof(MembershipUserSearch))]
         public string MembershipUserSearch { get; set; } = string.Empty;
         public GenericItemList MembershipResults { get; set; } = new GenericItemList();

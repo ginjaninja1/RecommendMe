@@ -81,7 +81,7 @@ namespace RecommendMe.UI.Admin
                 Plugin.Instance.AdminSettingsStore.MutateAsync(s =>
                 {
                     var entry = s.UserAccess.FirstOrDefault(u => u.UserId == sendModeUserId);
-                    if (entry != null)
+                    if (entry != null && (sendMode != SendMode.MyGroups || s.Groups.Any(g => g.MemberUserIds.Contains(sendModeUserId))))
                     {
                         entry.SendMode = sendMode;
                     }

@@ -82,6 +82,7 @@ namespace RecommendMe.UI.Admin
 
             foreach (var entry in settings.UserAccess.OrderBy(u => u.UserName))
             {
+                var groupNames = settings.Groups.Where(g => g.MemberUserIds.Contains(entry.UserId)).Select(g => g.Name).OrderBy(n => n).ToArray();
                 var subItems = new GenericItemList
                 {
                     new GenericListItem
@@ -117,13 +118,24 @@ namespace RecommendMe.UI.Admin
                     }
                 }
 
+                if (entry.SendMode == SendMode.MyGroups && groupNames.Length == 0)
+                {
+                    subItems.Add(new GenericListItem
+                    {
+                        PrimaryText = "No group membership",
+                        SecondaryText = "This user cannot send to anyone until they are added to a group.",
+                        Icon = IconNames.warning,
+                        Status = ItemStatus.Failed
+                    });
+                }
+
                 list.Add(new GenericListItem
                 {
                     PrimaryText = entry.UserName,
                     Icon = IconNames.person,
-                    SecondaryText = DescribeSendMode(entry),
-                    Status = entry.AccessSuspended ? ItemStatus.Failed : ItemStatus.Succeeded,
-                    Button1 = BuildSendModeButton(entry),
+                    SecondaryText = DescribeSendMode(entry, groupNames),
+                    Status = entry.AccessSuspended || (entry.SendMode == SendMode.MyGroups && groupNames.Length == 0) ? ItemStatus.Failed : ItemStatus.Succeeded,
+                    Button1 = BuildSendModeButton(entry, groupNames.Length > 0),
                     SubItems = subItems
                 });
             }
@@ -131,7 +143,7 @@ namespace RecommendMe.UI.Admin
             return list;
         }
 
-        private static string DescribeSendMode(UserAccessEntry entry)
+        private static string DescribeSendMode(UserAccessEntry entry, string[] groupNames)
         {
             switch (entry.SendMode)
             {
@@ -142,13 +154,13 @@ namespace RecommendMe.UI.Admin
                 case SendMode.SpecificUsers:
                     return $"Can send to: {entry.AllowedTargetUserIds.Count} named user(s) - see below";
                 case SendMode.MyGroups:
-                    return "Can send to: members of their group(s)";
+                    return groupNames.Length == 0 ? "Can send to: No one (not a member of any group)" : $"Can send to: Groups {string.Join(", ", groupNames)}";
                 default:
                     return null;
             }
         }
 
-        private static ButtonItem BuildSendModeButton(UserAccessEntry entry)
+        private static ButtonItem BuildSendModeButton(UserAccessEntry entry, bool hasGroups)
         {
             return new ButtonItem
             {
@@ -158,7 +170,7 @@ namespace RecommendMe.UI.Admin
                     new ButtonItem("Everyone") { CommandId = AdminCommands.BuildUserSendModeCommand(entry.UserId, SendMode.Everyone) },
                     new ButtonItem("No One") { CommandId = AdminCommands.BuildUserSendModeCommand(entry.UserId, SendMode.NoOne) },
                     new ButtonItem("Specific Users") { CommandId = AdminCommands.BuildUserSendModeCommand(entry.UserId, SendMode.SpecificUsers) },
-                    new ButtonItem("My Group(s) Members") { CommandId = AdminCommands.BuildUserSendModeCommand(entry.UserId, SendMode.MyGroups) }
+                    new ButtonItem("My Group(s) Members") { CommandId = AdminCommands.BuildUserSendModeCommand(entry.UserId, SendMode.MyGroups), IsEnabled = hasGroups }
                 }
             };
         }
