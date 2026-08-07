@@ -43,9 +43,16 @@ namespace RecommendMe.UI.Admin
         [DisplayName("Username filter")]
         [Description("Leave blank to show users. At most 10 results are displayed.")]
         [AutoPostBack(AdminCommands.SendToRefresh, nameof(UserSearch))]
-        public string UserSearch { get; set; } = string.Empty;
+        public virtual string UserSearch { get; set; } = string.Empty;
 
+        public LabelItem UserSearchSummary { get; set; } = new LabelItem(string.Empty);
         public GenericItemList ExistingUsers { get; set; } = new GenericItemList();
+    }
+
+    public class ExpandedSendToUI : SendToUI
+    {
+        [Browsable(false)]
+        public override string UserSearch { get; set; } = string.Empty;
     }
 
     internal class SendToDialogView : AdminDialogViewBase
@@ -65,6 +72,8 @@ namespace RecommendMe.UI.Admin
         {
             var settings = this.Settings();
             var owner = settings.UserAccess.First(e => e.UserId == this.userId);
+            if (settings.AlwaysExpandUsersAndGroups && !(state is ExpandedSendToUI)) state = new ExpandedSendToUI();
+            else if (!settings.AlwaysExpandUsersAndGroups && state is ExpandedSendToUI) state = new SendToUI();
             state.SelectedSendPolicy = owner.SendPolicy.ToString();
             state.NewUserSetting = new GenericItemList
             {
@@ -84,25 +93,29 @@ namespace RecommendMe.UI.Admin
             };
 
             state.ExistingUsers = new GenericItemList();
-            if (settings.AlwaysExpandUsersAndGroups || !string.IsNullOrWhiteSpace(state.UserSearch))
+            var allUsers = Plugin.Instance.GetAllUsers().Where(u => u.InternalId != this.userId).ToArray();
+            var matches = allUsers.Where(u => AdminViewBuilder.Contains(u.Name, state.UserSearch)).OrderBy(u => u.Name).ToArray();
+            var visible = settings.AlwaysExpandUsersAndGroups ? matches : matches.Take(10).ToArray();
+            state.UserSearchSummary = new LabelItem(AdminViewBuilder.SearchSummary(state.UserSearch, visible.Length, matches.Length, allUsers.Length, "users"))
             {
-                var active = owner.SendPolicy == SendPolicyType.AllowedUsers;
-                foreach (var user in Plugin.Instance.GetAllUsers().Where(u => u.InternalId != this.userId && AdminViewBuilder.Contains(u.Name, state.UserSearch)).OrderBy(u => u.Name).Take(10))
+                IsVisible = !settings.AlwaysExpandUsersAndGroups
+            };
+            var active = owner.SendPolicy == SendPolicyType.AllowedUsers;
+            foreach (var user in visible)
+            {
+                var allowed = owner.AllowedTargetUserIds.Contains(user.InternalId);
+                state.ExistingUsers.Add(new GenericListItem
                 {
-                    var allowed = owner.AllowedTargetUserIds.Contains(user.InternalId);
-                    state.ExistingUsers.Add(new GenericListItem
+                    PrimaryText = user.Name,
+                    Icon = IconNames.person,
+                    Status = allowed ? ItemStatus.Succeeded : ItemStatus.Unavailable,
+                    Toggle = new ToggleButtonItem("Allowed")
                     {
-                        PrimaryText = user.Name,
-                        Icon = IconNames.person,
-                        Status = allowed ? ItemStatus.Succeeded : ItemStatus.Unavailable,
-                        Toggle = new ToggleButtonItem("Allowed")
-                        {
-                            IsChecked = allowed,
-                            IsEnabled = active,
-                            CommandId = AdminCommands.Target(this.userId, user.InternalId)
-                        }
-                    });
-                }
+                        IsChecked = allowed,
+                        IsEnabled = active,
+                        CommandId = AdminCommands.Target(this.userId, user.InternalId)
+                    }
+                });
             }
             this.ContentData = state;
         }
@@ -151,8 +164,15 @@ namespace RecommendMe.UI.Admin
         [DisplayName("Username filter")]
         [Description("Leave blank to show users. At most 10 results are displayed.")]
         [AutoPostBack(AdminCommands.ReceiveFromRefresh, nameof(UserSearch))]
-        public string UserSearch { get; set; } = string.Empty;
+        public virtual string UserSearch { get; set; } = string.Empty;
+        public LabelItem UserSearchSummary { get; set; } = new LabelItem(string.Empty);
         public GenericItemList SenderList { get; set; } = new GenericItemList();
+    }
+
+    public class ExpandedReceiveFromUI : ReceiveFromUI
+    {
+        [Browsable(false)]
+        public override string UserSearch { get; set; } = string.Empty;
     }
 
     internal class ReceiveFromDialogView : AdminDialogViewBase
@@ -170,47 +190,53 @@ namespace RecommendMe.UI.Admin
         {
             var settings = this.Settings();
             var preferences = Plugin.Instance.UserPreferenceStore.GetForUserAsync(this.userId).GetAwaiter().GetResult();
+            if (settings.AlwaysExpandUsersAndGroups && !(state is ExpandedReceiveFromUI)) state = new ExpandedReceiveFromUI();
+            else if (!settings.AlwaysExpandUsersAndGroups && state is ExpandedReceiveFromUI) state = new ReceiveFromUI();
             state.SenderList = new GenericItemList();
-            if (settings.AlwaysExpandUsersAndGroups || !string.IsNullOrWhiteSpace(state.UserSearch))
+            var allUsers = Plugin.Instance.GetAllUsers().Where(u => u.InternalId != this.userId).ToArray();
+            var matches = allUsers.Where(u => AdminViewBuilder.Contains(u.Name, state.UserSearch)).OrderBy(u => u.Name).ToArray();
+            var visible = settings.AlwaysExpandUsersAndGroups ? matches : matches.Take(10).ToArray();
+            state.UserSearchSummary = new LabelItem(AdminViewBuilder.SearchSummary(state.UserSearch, visible.Length, matches.Length, allUsers.Length, "users"))
             {
-                foreach (var sender in Plugin.Instance.GetAllUsers().Where(u => u.InternalId != this.userId && AdminViewBuilder.Contains(u.Name, state.UserSearch)).OrderBy(u => u.Name).Take(10))
+                IsVisible = !settings.AlwaysExpandUsersAndGroups
+            };
+            foreach (var sender in visible)
+            {
+                var senderEntry = settings.UserAccess.First(e => e.UserId == sender.InternalId);
+                var preference = preferences.SenderPreferences.FirstOrDefault(p => p.SenderUserId == sender.InternalId);
+                var blocked = preference?.Blocked ?? false;
+                var optedOut = preference?.OptedOutMediaTypes ?? new List<string>();
+                var mediaItems = new GenericItemList();
+                foreach (var mediaType in RecommendableMediaTypes.All.Where(settings.GloballyAllowedMediaTypes.Contains))
                 {
-                    var senderEntry = settings.UserAccess.First(e => e.UserId == sender.InternalId);
-                    var preference = preferences.SenderPreferences.FirstOrDefault(p => p.SenderUserId == sender.InternalId);
-                    var blocked = preference?.Blocked ?? false;
-                    var optedOut = preference?.OptedOutMediaTypes ?? new List<string>();
-                    var mediaItems = new GenericItemList();
-                    foreach (var mediaType in RecommendableMediaTypes.All.Where(settings.GloballyAllowedMediaTypes.Contains))
+                    var receive = !optedOut.Contains(mediaType);
+                    mediaItems.Add(new GenericListItem
                     {
-                        var receive = !optedOut.Contains(mediaType);
-                        mediaItems.Add(new GenericListItem
+                        PrimaryText = mediaType,
+                        Icon = global::RecommendMe.UI.Recommend.RecommendViewBuilder.GetIcon(mediaType),
+                        Status = receive ? ItemStatus.Succeeded : ItemStatus.Unavailable,
+                        Toggle = new ToggleButtonItem("Receive")
                         {
-                            PrimaryText = mediaType,
-                            Icon = global::RecommendMe.UI.Recommend.RecommendViewBuilder.GetIcon(mediaType),
-                            Status = receive ? ItemStatus.Succeeded : ItemStatus.Unavailable,
-                            Toggle = new ToggleButtonItem("Receive")
-                            {
-                                IsChecked = receive && !blocked,
-                                IsEnabled = !blocked,
-                                CommandId = AdminCommands.ReceiveMedia(this.userId, sender.InternalId, mediaType)
-                            }
-                        });
-                    }
-                    var permitted = !senderEntry.AccessSuspended && PermissionService.IsTargetAllowed(senderEntry, this.userId, settings);
-                    state.SenderList.Add(new GenericListItem
-                    {
-                        PrimaryText = sender.Name,
-                        SecondaryText = permitted ? "Permitted by send policy" : "Not currently permitted by send policy",
-                        Icon = IconNames.person,
-                        Status = blocked ? ItemStatus.Failed : ItemStatus.Succeeded,
-                        Toggle = new ToggleButtonItem("Accept recommendations")
-                        {
-                            IsChecked = !blocked,
-                            CommandId = AdminCommands.ReceiveSender(this.userId, sender.InternalId)
-                        },
-                        SubItems = mediaItems
+                            IsChecked = receive && !blocked,
+                            IsEnabled = !blocked,
+                            CommandId = AdminCommands.ReceiveMedia(this.userId, sender.InternalId, mediaType)
+                        }
                     });
                 }
+                var permitted = !senderEntry.AccessSuspended && PermissionService.IsTargetAllowed(senderEntry, this.userId, settings);
+                state.SenderList.Add(new GenericListItem
+                {
+                    PrimaryText = sender.Name,
+                    SecondaryText = permitted ? "Permitted by send policy" : "Not currently permitted by send policy",
+                    Icon = IconNames.person,
+                    Status = blocked ? ItemStatus.Failed : ItemStatus.Succeeded,
+                    Toggle = new ToggleButtonItem("Accept recommendations")
+                    {
+                        IsChecked = !blocked,
+                        CommandId = AdminCommands.ReceiveSender(this.userId, sender.InternalId)
+                    },
+                    SubItems = mediaItems
+                });
             }
             this.ContentData = state;
         }
@@ -264,8 +290,15 @@ namespace RecommendMe.UI.Admin
         [DisplayName("Group name filter")]
         [Description("Leave blank to show groups. At most 10 results are displayed.")]
         [AutoPostBack(AdminCommands.GroupMembershipRefresh, nameof(GroupSearch))]
-        public string GroupSearch { get; set; } = string.Empty;
+        public virtual string GroupSearch { get; set; } = string.Empty;
+        public LabelItem GroupSearchSummary { get; set; } = new LabelItem(string.Empty);
         public GenericItemList GroupResults { get; set; } = new GenericItemList();
+    }
+
+    public class ExpandedUserGroupMembershipUI : UserGroupMembershipUI
+    {
+        [Browsable(false)]
+        public override string GroupSearch { get; set; } = string.Empty;
     }
 
     internal class UserGroupMembershipDialogView : AdminDialogViewBase
@@ -281,22 +314,27 @@ namespace RecommendMe.UI.Admin
         private void Rebuild(UserGroupMembershipUI state)
         {
             var settings = this.Settings();
+            if (settings.AlwaysExpandUsersAndGroups && !(state is ExpandedUserGroupMembershipUI)) state = new ExpandedUserGroupMembershipUI();
+            else if (!settings.AlwaysExpandUsersAndGroups && state is ExpandedUserGroupMembershipUI) state = new UserGroupMembershipUI();
             var current = AdminViewBuilder.GroupNames(settings, this.userId);
             state.CurrentGroups = new LabelItem(current.Length == 0 ? "None" : string.Join(", ", current));
             state.GroupResults = new GenericItemList();
-            if (settings.AlwaysExpandUsersAndGroups || !string.IsNullOrWhiteSpace(state.GroupSearch))
+            var matches = settings.Groups.Where(g => AdminViewBuilder.Contains(g.Name, state.GroupSearch)).OrderBy(g => g.Name).ToArray();
+            var visible = settings.AlwaysExpandUsersAndGroups ? matches : matches.Take(10).ToArray();
+            state.GroupSearchSummary = new LabelItem(AdminViewBuilder.SearchSummary(state.GroupSearch, visible.Length, matches.Length, settings.Groups.Count, "groups"))
             {
-                foreach (var group in settings.Groups.Where(g => AdminViewBuilder.Contains(g.Name, state.GroupSearch)).OrderBy(g => g.Name).Take(10))
+                IsVisible = !settings.AlwaysExpandUsersAndGroups
+            };
+            foreach (var group in visible)
+            {
+                var member = group.MemberUserIds.Contains(this.userId);
+                state.GroupResults.Add(new GenericListItem
                 {
-                    var member = group.MemberUserIds.Contains(this.userId);
-                    state.GroupResults.Add(new GenericListItem
-                    {
-                        PrimaryText = group.Name,
-                        Icon = IconNames.groups,
-                        Status = member ? ItemStatus.Succeeded : ItemStatus.Unavailable,
-                        Button1 = new ButtonItem(member ? "Remove" : "Add") { CommandId = AdminCommands.Group(this.userId, group.Id) }
-                    });
-                }
+                    PrimaryText = group.Name,
+                    Icon = IconNames.groups,
+                    Status = member ? ItemStatus.Succeeded : ItemStatus.Unavailable,
+                    Button1 = new ButtonItem(member ? "Remove" : "Add") { CommandId = AdminCommands.Group(this.userId, group.Id) }
+                });
             }
             this.ContentData = state;
         }
@@ -327,8 +365,15 @@ namespace RecommendMe.UI.Admin
         [DisplayName("Username filter")]
         [Description("Leave blank to show users. At most 10 results are displayed.")]
         [AutoPostBack(AdminCommands.DefaultPolicyRefresh, nameof(UserSearch))]
-        public string UserSearch { get; set; } = string.Empty;
+        public virtual string UserSearch { get; set; } = string.Empty;
+        public LabelItem UserSearchSummary { get; set; } = new LabelItem(string.Empty);
         public GenericItemList UserResults { get; set; } = new GenericItemList();
+    }
+
+    public class ExpandedDefaultUserPolicyUI : DefaultUserPolicyUI
+    {
+        [Browsable(false)]
+        public override string UserSearch { get; set; } = string.Empty;
     }
 
     internal class DefaultUserPolicyDialogView : AdminDialogViewBase
@@ -339,16 +384,21 @@ namespace RecommendMe.UI.Admin
         private void Rebuild(DefaultUserPolicyUI state)
         {
             var settings = this.Settings();
+            if (settings.AlwaysExpandUsersAndGroups && !(state is ExpandedDefaultUserPolicyUI)) state = new ExpandedDefaultUserPolicyUI();
+            else if (!settings.AlwaysExpandUsersAndGroups && state is ExpandedDefaultUserPolicyUI) state = new DefaultUserPolicyUI();
             state.CurrentDefault = BuildUsers(settings, Plugin.Instance.GetAllUsers().Where(u => settings.DefaultUserPolicySourceUserId == u.InternalId), false);
             if (state.CurrentDefault.Count == 0)
             {
                 state.CurrentDefault.Add(new GenericListItem { PrimaryText = "No default user selected", SecondaryText = "New users use No One and no groups", Status = ItemStatus.Unavailable });
             }
-            state.UserResults = new GenericItemList();
-            if (settings.AlwaysExpandUsersAndGroups || !string.IsNullOrWhiteSpace(state.UserSearch))
+            var allUsers = Plugin.Instance.GetAllUsers();
+            var matches = allUsers.Where(u => AdminViewBuilder.Contains(u.Name, state.UserSearch)).OrderBy(u => u.Name).ToArray();
+            var visible = settings.AlwaysExpandUsersAndGroups ? matches : matches.Take(10).ToArray();
+            state.UserSearchSummary = new LabelItem(AdminViewBuilder.SearchSummary(state.UserSearch, visible.Length, matches.Length, allUsers.Count, "users"))
             {
-                state.UserResults = BuildUsers(settings, Plugin.Instance.GetAllUsers().Where(u => AdminViewBuilder.Contains(u.Name, state.UserSearch)).OrderBy(u => u.Name).Take(10), true);
-            }
+                IsVisible = !settings.AlwaysExpandUsersAndGroups
+            };
+            state.UserResults = BuildUsers(settings, visible, true);
             this.ContentData = state;
         }
         private static GenericItemList BuildUsers(AdminSettings settings, IEnumerable<User> users, bool selectable)

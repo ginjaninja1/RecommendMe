@@ -101,26 +101,28 @@ namespace RecommendMe.UI.Recommend
             return result;
         }
 
-        public static bool TrySetChildren(GenericItemList list, long parentId, IReadOnlyList<BaseItem> children)
+        public static bool TryToggleChildren(GenericItemList list, long parentId, System.Func<IReadOnlyList<BaseItem>> getChildren)
         {
             foreach (var row in list)
             {
-                if (TrySetChildren(row, parentId, children)) return true;
+                if (TryToggleChildren(row, parentId, getChildren)) return true;
             }
             return false;
         }
 
-        private static bool TrySetChildren(GenericListItem row, long parentId, IReadOnlyList<BaseItem> children)
+        private static bool TryToggleChildren(GenericListItem row, long parentId, System.Func<IReadOnlyList<BaseItem>> getChildren)
         {
             if (row.Button2?.CommandId == RecommendCommands.BuildSendCommandId(parentId))
             {
-                row.SubItems = children.Select(BuildMediaItem).ToList();
+                row.SubItems = row.SubItems == null
+                    ? getChildren().Select(BuildMediaItem).ToList()
+                    : null;
                 return true;
             }
             if (row.SubItems == null) return false;
             foreach (var child in row.SubItems)
             {
-                if (TrySetChildren(child, parentId, children)) return true;
+                if (TryToggleChildren(child, parentId, getChildren)) return true;
             }
             return false;
         }

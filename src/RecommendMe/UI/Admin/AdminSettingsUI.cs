@@ -11,7 +11,10 @@ namespace RecommendMe.UI.Admin
         public override string EditorTitle => "Users";
         public override string EditorDescription => "Control deterministic send and receive access for every user.";
 
-        public GenericItemList ExpansionSetting { get; set; } = new GenericItemList();
+        [DisplayName("Always Expand Users and Groups")]
+        [Description("On: show every user and group and allow the page to scroll. Off: show search filters and limit each result list to 10 items.")]
+        [AutoPostBack(AdminCommands.ToggleExpansion, nameof(AlwaysExpandUsersAndGroups))]
+        public bool AlwaysExpandUsersAndGroups { get; set; } = true;
 
         public CaptionItem NewUserHeading { get; set; } =
             new CaptionItem("New users: Copy default groups and send policy from");
@@ -23,8 +26,10 @@ namespace RecommendMe.UI.Admin
         [DisplayName("Username filter")]
         [Description("Leave blank to show users. At most 10 results are displayed.")]
         [AutoPostBack(AdminCommands.Refresh, nameof(UserSearch))]
+        [VisibleCondition(nameof(AlwaysExpandUsersAndGroups), SimpleCondition.IsFalse)]
         public string UserSearch { get; set; } = string.Empty;
 
+        [VisibleCondition(nameof(AlwaysExpandUsersAndGroups), SimpleCondition.IsFalse)]
         public LabelItem UserSearchSummary { get; set; } = new LabelItem(string.Empty);
 
         public GenericItemList UserAccessList { get; set; } = new GenericItemList();

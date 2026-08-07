@@ -20,8 +20,15 @@ namespace RecommendMe.UI.Admin
         public override string EditorDescription => null;
         [DisplayName("Username search")]
         [AutoPostBack(GroupsCommands.Refresh, nameof(UserSearch))]
-        public string UserSearch { get; set; } = string.Empty;
+        public virtual string UserSearch { get; set; } = string.Empty;
+        public LabelItem UserSearchSummary { get; set; } = new LabelItem(string.Empty);
         public GenericItemList UserResults { get; set; } = new GenericItemList();
+    }
+
+    public class ExpandedGroupMembersUI : GroupMembersUI
+    {
+        [Browsable(false)]
+        public override string UserSearch { get; set; } = string.Empty;
     }
 
     internal class GroupMembersDialogView : PluginDialogView
@@ -57,10 +64,19 @@ namespace RecommendMe.UI.Admin
         {
             var settings = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult();
             var group = settings.Groups.FirstOrDefault(g => g.Id == this.groupId);
+            if (settings.AlwaysExpandUsersAndGroups && !(state is ExpandedGroupMembersUI)) state = new ExpandedGroupMembersUI();
+            else if (!settings.AlwaysExpandUsersAndGroups && state is ExpandedGroupMembersUI) state = new GroupMembersUI();
             state.UserResults = new GenericItemList();
-            if (group != null && (settings.AlwaysExpandUsersAndGroups || !string.IsNullOrWhiteSpace(state.UserSearch)))
+            var allUsers = Plugin.Instance.GetAllUsers();
+            var matches = allUsers.Where(u => u.Name.IndexOf(state.UserSearch ?? string.Empty, StringComparison.OrdinalIgnoreCase) >= 0).OrderBy(u => u.Name).ToArray();
+            var visible = settings.AlwaysExpandUsersAndGroups ? matches : matches.Take(10).ToArray();
+            state.UserSearchSummary = new LabelItem(AdminViewBuilder.SearchSummary(state.UserSearch, visible.Length, matches.Length, allUsers.Count, "users"))
             {
-                foreach (var user in Plugin.Instance.GetAllUsers().Where(u => u.Name.IndexOf(state.UserSearch, StringComparison.OrdinalIgnoreCase) >= 0).OrderBy(u => u.Name).Take(10))
+                IsVisible = !settings.AlwaysExpandUsersAndGroups
+            };
+            if (group != null)
+            {
+                foreach (var user in visible)
                 {
                     var member = group.MemberUserIds.Contains(user.InternalId);
                     state.UserResults.Add(new GenericListItem

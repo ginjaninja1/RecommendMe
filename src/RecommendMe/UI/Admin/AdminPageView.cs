@@ -47,7 +47,7 @@ namespace RecommendMe.UI.Admin
 
             if (commandId == AdminCommands.ToggleExpansion)
             {
-                Plugin.Instance.AdminSettingsStore.MutateAsync(s => s.AlwaysExpandUsersAndGroups = !s.AlwaysExpandUsersAndGroups).GetAwaiter().GetResult();
+                Plugin.Instance.AdminSettingsStore.MutateAsync(s => s.AlwaysExpandUsersAndGroups = state.AlwaysExpandUsersAndGroups).GetAwaiter().GetResult();
             }
             else if (AdminCommands.TrySuspended(commandId, out var userId))
             {

@@ -29,14 +29,24 @@ namespace RecommendMe.UI.Admin
         public CaptionItem AvailableHeading { get; set; } = new CaptionItem("Available Groups");
         [DisplayName("Group search")]
         [AutoPostBack(GroupsCommands.Refresh, nameof(GroupSearch))]
-        public string GroupSearch { get; set; } = string.Empty;
+        public virtual string GroupSearch { get; set; } = string.Empty;
         public LabelItem GroupSearchSummary { get; set; } = new LabelItem(string.Empty);
         public GenericItemList GroupResults { get; set; } = new GenericItemList();
 
         public CaptionItem UserLookupHeading { get; set; } = new CaptionItem("Find a user’s groups");
         [DisplayName("User search")]
         [AutoPostBack(GroupsCommands.Refresh, nameof(MembershipUserSearch))]
-        public string MembershipUserSearch { get; set; } = string.Empty;
+        public virtual string MembershipUserSearch { get; set; } = string.Empty;
+        public LabelItem MembershipSearchSummary { get; set; } = new LabelItem(string.Empty);
         public GenericItemList MembershipResults { get; set; } = new GenericItemList();
+    }
+
+    public class ExpandedGroupsUI : GroupsUI
+    {
+        [Browsable(false)]
+        public override string GroupSearch { get; set; } = string.Empty;
+
+        [Browsable(false)]
+        public override string MembershipUserSearch { get; set; } = string.Empty;
     }
 }

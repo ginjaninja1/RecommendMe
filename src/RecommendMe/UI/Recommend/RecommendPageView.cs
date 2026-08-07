@@ -32,7 +32,7 @@ namespace RecommendMe.UI.Recommend
             this.applicationHost = applicationHost;
             this.logger = logger;
             this.jsonSerializer = applicationHost.Resolve<IJsonSerializer>();
-            this.searchService = new MediaSearchService(Plugin.Instance.LibraryManager);
+            this.searchService = new MediaSearchService(Plugin.Instance.LibraryManager, this.logger);
 
             this.ShowSave = false;
             this.ShowBack = false;
@@ -125,7 +125,10 @@ namespace RecommendMe.UI.Recommend
                 var parent = Plugin.Instance.LibraryManager.GetItemById(itemToExpandId);
                 if (parent != null)
                 {
-                    RecommendViewBuilder.TrySetChildren(ui.SearchResults, itemToExpandId, this.searchService.GetChildren(currentUser, parent));
+                    RecommendViewBuilder.TryToggleChildren(
+                        ui.SearchResults,
+                        itemToExpandId,
+                        () => this.searchService.GetChildren(currentUser, parent));
                 }
                 return Task.FromResult<IPluginUIView>(this);
             }
@@ -138,13 +141,30 @@ namespace RecommendMe.UI.Recommend
 
         private IPluginUIView HandleSearch(RecommendUI ui, User currentUser)
         {
-            ui.TargetUserChoices = RecommendViewBuilder.BuildTargetUserChoicesAsync(currentUser).GetAwaiter().GetResult();
-            var allowedTypes = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult().GloballyAllowedMediaTypes;
-            var results = this.searchService.Search(currentUser, ui.SearchTerm, allowedTypes);
-            ui.SearchResults = RecommendViewBuilder.BuildSearchResults(results);
-            ui.StatusMessage = new Emby.Web.GenericEdit.Elements.List.GenericItemList();
+            try
+            {
+                ui.TargetUserChoices = RecommendViewBuilder.BuildTargetUserChoicesAsync(currentUser).GetAwaiter().GetResult();
+                var allowedTypes = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult().GloballyAllowedMediaTypes;
+                var results = this.searchService.Search(currentUser, ui.SearchTerm, allowedTypes);
+                ui.SearchResults = RecommendViewBuilder.BuildSearchResults(results);
+                ui.StatusMessage = new Emby.Web.GenericEdit.Elements.List.GenericItemList();
+            }
+            catch (Exception ex)
+            {
+                this.logger.ErrorException(
+                    $"RecommendMe: media search failed for user {currentUser.Name} ({currentUser.InternalId}), term '{LogValue(ui.SearchTerm)}'",
+                    ex);
+                ui.SearchResults = new Emby.Web.GenericEdit.Elements.List.GenericItemList();
+                ui.StatusMessage = RecommendViewBuilder.BuildStatusMessage("Search failed. Check the Emby server log for RecommendMe diagnostics.", false);
+            }
+
             return this;
         }
+
+        private static string LogValue(string value) =>
+            string.IsNullOrEmpty(value)
+                ? string.Empty
+                : value.Replace("\r", "\\r").Replace("\n", "\\n");
 
         private async Task<IPluginUIView> HandleSendAsync(RecommendUI ui, User currentUser, long itemId)
         {

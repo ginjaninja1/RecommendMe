@@ -32,57 +32,44 @@ namespace RecommendMe.UI.Admin
         public static AdminSettingsUI Build(AdminSettings settings, IReadOnlyList<User> users, AdminSettingsUI state)
         {
             state = state ?? new AdminSettingsUI();
-            state.ExpansionSetting = new GenericItemList
+            state.AlwaysExpandUsersAndGroups = settings.AlwaysExpandUsersAndGroups;
+            if (settings.AlwaysExpandUsersAndGroups)
             {
-                new GenericListItem
-                {
-                    PrimaryText = "Always Expand Users and Groups",
-                    SecondaryText = settings.AlwaysExpandUsersAndGroups
-                        ? "All users and groups will show"
-                        : "Users and Groups will have a search interface (Large Configs)",
-                    Status = settings.AlwaysExpandUsersAndGroups ? ItemStatus.Succeeded : ItemStatus.Unavailable,
-                    Toggle = new ToggleButtonItem("Expand")
-                    {
-                        IsChecked = settings.AlwaysExpandUsersAndGroups,
-                        CommandId = AdminCommands.ToggleExpansion
-                    }
-                }
-            };
+                state.UserSearch = string.Empty;
+            }
 
             state.NewUserDefaultsList = BuildDefaultPolicy(settings, users);
 
             var matches = users.Where(u => Contains(u.Name, state.UserSearch)).OrderBy(u => u.Name).ToArray();
-            state.UserSearchSummary = new LabelItem($"{matches.Length} matches, {users.Count} users total (showing at most 10)");
+            var visibleUsers = settings.AlwaysExpandUsersAndGroups ? matches : matches.Take(10).ToArray();
+            state.UserSearchSummary = new LabelItem(SearchSummary(state.UserSearch, visibleUsers.Length, matches.Length, users.Count, "users"));
             state.UserAccessList = new GenericItemList();
-            if (settings.AlwaysExpandUsersAndGroups || !string.IsNullOrWhiteSpace(state.UserSearch))
+            foreach (var user in visibleUsers)
             {
-                foreach (var user in matches.Take(10))
+                var entry = settings.UserAccess.First(e => e.UserId == user.InternalId);
+                var groups = GroupNames(settings, entry.UserId);
+                state.UserAccessList.Add(new GenericListItem
                 {
-                    var entry = settings.UserAccess.First(e => e.UserId == user.InternalId);
-                    var groups = GroupNames(settings, entry.UserId);
-                    state.UserAccessList.Add(new GenericListItem
+                    PrimaryText = $"{user.Name} - {PolicyName(entry.SendPolicy)} / New User Allowed {(entry.AllowNewUsers ? "Y" : "N")}",
+                    SecondaryText = "Groups: " + (groups.Length == 0 ? "None" : string.Join(", ", groups)),
+                    Icon = IconNames.person,
+                    Status = entry.AccessSuspended ? ItemStatus.Failed : ItemStatus.Succeeded,
+                    Toggle = new ToggleButtonItem("Suspended")
                     {
-                        PrimaryText = $"{user.Name} - {PolicyName(entry.SendPolicy)} / New User Allowed {(entry.AllowNewUsers ? "Y" : "N")}",
-                        SecondaryText = "Groups: " + (groups.Length == 0 ? "None" : string.Join(", ", groups)),
-                        Icon = IconNames.person,
-                        Status = entry.AccessSuspended ? ItemStatus.Failed : ItemStatus.Succeeded,
-                        Toggle = new ToggleButtonItem("Suspended")
+                        IsChecked = entry.AccessSuspended,
+                        CommandId = AdminCommands.Suspended(entry.UserId)
+                    },
+                    Button1 = new ButtonItem
+                    {
+                        Caption = "Manage",
+                        SubMenuButtons = new List<ButtonItem>
                         {
-                            IsChecked = entry.AccessSuspended,
-                            CommandId = AdminCommands.Suspended(entry.UserId)
-                        },
-                        Button1 = new ButtonItem
-                        {
-                            Caption = "Manage",
-                            SubMenuButtons = new List<ButtonItem>
-                            {
-                                new ButtonItem("Send to") { CommandId = AdminCommands.SendTo(entry.UserId) },
-                                new ButtonItem("Receive from") { CommandId = AdminCommands.ReceiveFrom(entry.UserId) },
-                                new ButtonItem("Group Membership") { CommandId = AdminCommands.Membership(entry.UserId) }
-                            }
+                            new ButtonItem("Send to") { CommandId = AdminCommands.SendTo(entry.UserId) },
+                            new ButtonItem("Receive from") { CommandId = AdminCommands.ReceiveFrom(entry.UserId) },
+                            new ButtonItem("Group Membership") { CommandId = AdminCommands.Membership(entry.UserId) }
                         }
-                    });
-                }
+                    }
+                });
             }
 
             return state;
@@ -105,6 +92,13 @@ namespace RecommendMe.UI.Admin
 
         internal static bool Contains(string value, string search) =>
             string.IsNullOrWhiteSpace(search) || (value?.IndexOf(search, StringComparison.OrdinalIgnoreCase) ?? -1) >= 0;
+
+        internal static string SearchSummary(string search, int shown, int matches, int total, string noun)
+        {
+            return string.IsNullOrWhiteSpace(search)
+                ? $"Showing {shown} of {total} {noun} (no filter)."
+                : $"Showing {shown} of {matches} matching {noun} for ‘{search.Trim()}’ ({total} total).";
+        }
 
         private static GenericItemList BuildDefaultPolicy(AdminSettings settings, IReadOnlyList<User> users)
         {
