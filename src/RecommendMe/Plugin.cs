@@ -5,6 +5,7 @@ using MediaBrowser.Controller;
 using MediaBrowser.Controller.Collections;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Plugins;
 using MediaBrowser.Controller.Session;
 using MediaBrowser.Model.Drawing;
 using MediaBrowser.Model.IO;
@@ -19,17 +20,24 @@ using RecommendMe.UI;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace RecommendMe
 {
-    public class Plugin : BasePlugin<PluginConfiguration>, IHasThumbImage, IHasUIPages
+    public class Plugin : BasePlugin<PluginConfiguration>, IHasThumbImage, IHasUIPages, IServerEntryPoint
     {
+        private static readonly TimeSpan BackgroundShutdownTimeout = TimeSpan.FromSeconds(10);
+
         private readonly IServerApplicationHost applicationHost;
         private readonly ILogger logger;
         private readonly IUserDataManager userDataManager;
+        private readonly object lifecycleLock = new object();
+        private readonly HashSet<Task> backgroundTasks = new HashSet<Task>();
 
         private List<IPluginUIPageController> pages;
+        private bool isRunning;
+        private bool isDisposed;
 
         public Plugin(
             IServerApplicationHost applicationHost,
@@ -40,8 +48,6 @@ namespace RecommendMe
         {
             this.applicationHost = applicationHost;
             this.logger = logManager.GetLogger(this.Name);
-
-            Instance = this;
 
             // --- Storage layer -------------------------------------------------
             var appPaths = applicationHost.Resolve<IApplicationPaths>();
@@ -77,9 +83,10 @@ namespace RecommendMe
                 this.userDataManager,
                 this.logger);
 
-            // Automatic cleanup via playback: no scheduled task, just react to
-            // the user's play state changing.
-            this.userDataManager.UserDataSaved += this.OnUserDataSaved;
+            // Publish only a fully constructed instance. If construction of a
+            // store or service fails, UI and scheduled-task code must not see
+            // a partially initialized plugin through the static bridge.
+            Instance = this;
         }
 
         public static Plugin Instance { get; private set; }
@@ -162,6 +169,82 @@ namespace RecommendMe
             }
         }
 
+        /// <summary>
+        /// Starts the event-driven portion of the plugin. Emby invokes this
+        /// through <see cref="IServerEntryPoint"/> after all server parts have
+        /// been constructed, and later invokes <see cref="Dispose"/> during
+        /// shutdown.
+        /// </summary>
+        public void Run()
+        {
+            lock (this.lifecycleLock)
+            {
+                if (this.isDisposed || this.isRunning)
+                {
+                    return;
+                }
+
+                this.userDataManager.UserDataSaved += this.OnUserDataSaved;
+                this.isRunning = true;
+            }
+        }
+
+        /// <summary>
+        /// Stops accepting playback events and gives already-started cleanup
+        /// work a bounded opportunity to finish before Emby disposes the
+        /// services on which that work depends.
+        /// </summary>
+        public void Dispose()
+        {
+            Task[] tasks;
+
+            lock (this.lifecycleLock)
+            {
+                if (this.isDisposed)
+                {
+                    return;
+                }
+
+                this.isDisposed = true;
+
+                if (this.isRunning)
+                {
+                    this.userDataManager.UserDataSaved -= this.OnUserDataSaved;
+                    this.isRunning = false;
+                }
+
+                tasks = new Task[this.backgroundTasks.Count];
+                this.backgroundTasks.CopyTo(tasks);
+            }
+
+            if (tasks.Length > 0)
+            {
+                try
+                {
+                    if (!Task.WaitAll(tasks, BackgroundShutdownTimeout))
+                    {
+                        this.logger.Warn(
+                            "Timed out waiting for {0} watched-item cleanup task(s) during plugin shutdown.",
+                            tasks.Length);
+                    }
+                }
+                catch (AggregateException ex)
+                {
+                    // The worker normally observes and logs its own failures.
+                    // Retain this guard so teardown itself can never fail if a
+                    // task faults before entering that worker.
+                    this.logger.ErrorException(
+                        "Error waiting for watched-item cleanup during plugin shutdown",
+                        ex.Flatten());
+                }
+            }
+
+            if (ReferenceEquals(Instance, this))
+            {
+                Instance = null!;
+            }
+        }
+
         private void OnUserDataSaved(object sender, UserDataSaveEventArgs e)
         {
             if (e?.User == null || e.Item == null || e.UserData == null || !e.UserData.Played)
@@ -169,28 +252,69 @@ namespace RecommendMe
                 return;
             }
 
-            // Fire-and-forget: this is an event handler, it cannot be awaited.
-            // Any failure here must not affect Emby's own playback/user-data
-            // pipeline, so it's logged rather than allowed to throw.
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    var settings = await this.AdminSettingsStore.GetAsync().ConfigureAwait(false);
-                    if (!settings.ClearWatchedRecommendations)
-                    {
-                        return;
-                    }
+            Task task;
 
-                    await this.RecommendationService
-                        .HandleItemWatchedAsync(e.User.InternalId, e.Item.InternalId, e.User)
-                        .ConfigureAwait(false);
-                }
-                catch (Exception ex)
+            lock (this.lifecycleLock)
+            {
+                if (this.isDisposed || !this.isRunning)
                 {
-                    this.logger.ErrorException("Error handling watched-item cleanup", ex);
+                    return;
                 }
-            });
+
+                // Do not block Emby's user-data pipeline on file or collection
+                // I/O. Register the task while holding the lifecycle lock so
+                // Dispose cannot miss work that has already been accepted.
+                task = Task.Run(() => this.HandleItemWatchedAsync(
+                    e.User.InternalId,
+                    e.Item.InternalId,
+                    e.User));
+                this.backgroundTasks.Add(task);
+            }
+
+            _ = task.ContinueWith(
+                completedTask =>
+                {
+                    lock (this.lifecycleLock)
+                    {
+                        this.backgroundTasks.Remove(completedTask);
+                    }
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
+
+        private async Task HandleItemWatchedAsync(long userId, long itemId, User user)
+        {
+            try
+            {
+                if (this.IsDisposed())
+                {
+                    return;
+                }
+
+                var settings = await this.AdminSettingsStore.GetAsync().ConfigureAwait(false);
+                if (!settings.ClearWatchedRecommendations || this.IsDisposed())
+                {
+                    return;
+                }
+
+                await this.RecommendationService
+                    .HandleItemWatchedAsync(userId, itemId, user)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                this.logger.ErrorException("Error handling watched-item cleanup", ex);
+            }
+        }
+
+        private bool IsDisposed()
+        {
+            lock (this.lifecycleLock)
+            {
+                return this.isDisposed;
+            }
         }
     }
 }
