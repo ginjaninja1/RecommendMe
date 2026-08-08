@@ -10,7 +10,7 @@ namespace RecommendMe.Storage
     /// <summary>
     /// Persists <see cref="AdminSettings"/> to admin-settings.json.
     /// </summary>
-    public class AdminSettingsStore
+    internal class AdminSettingsStore
     {
         private readonly JsonFileRepository<AdminSettings> repository;
 
@@ -28,8 +28,6 @@ namespace RecommendMe.Storage
         }
 
         public Task<AdminSettings> GetAsync() => this.repository.ReadAsync();
-
-        public Task SaveAsync(AdminSettings settings) => this.repository.WriteAsync(settings);
 
         public Task MutateAsync(System.Action<AdminSettings> mutate) => this.repository.MutateAsync(mutate);
     }

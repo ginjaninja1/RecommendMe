@@ -1,42 +1,12 @@
 ﻿using Emby.Web.GenericEdit;
 using Emby.Web.GenericEdit.Elements;
 using Emby.Web.GenericEdit.Elements.DxGrid;
-using MediaBrowser.Model.Attributes;
 using System;
 using System.ComponentModel;
+using MediaBrowser.Model.Attributes;
 
 namespace RecommendMe.UI.History
 {
-    /// <summary>
-    /// One row of the history grid. Property DECLARATION ORDER is the grid's
-    /// default column order (DxColumnBuilder.CreateColumns reflects over the
-    /// type via TypeDescriptor.GetProperties) - see HistoryViewBuilder.BuildEmptyGrid.
-    /// </summary>
-    public class HistoryRow
-    {
-        /// <summary>Grid row key (DxGridOptions keyExpr). Hidden - not a user-facing column.</summary>
-        [Browsable(false)]
-        public string RecommendationId { get; set; }
-
-        [DisplayName("Recommended To")]
-        public string RecommendedTo { get; set; }
-
-        [DisplayName("Recommended By")]
-        public string RecommendedBy { get; set; }
-
-        [DisplayName("Private")]
-        public string Private { get; set; }
-
-        [DisplayName("Date Recommended")]
-        public string DateRecommended { get; set; }
-
-        [DisplayName("Media Type")]
-        public string MediaType { get; set; }
-
-        [DisplayName("Name")]
-        public string Name { get; set; }
-    }
-
     /// <summary>
     /// View-model for the Recommendation History dialog. All rows the viewer
     /// is allowed to see (per privacy/visibility isolation - a security

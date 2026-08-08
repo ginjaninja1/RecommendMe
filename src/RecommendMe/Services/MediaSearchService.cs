@@ -14,7 +14,7 @@ namespace RecommendMe.Services
     /// needs: "items of these types whose name matches this search term,
     /// visible to this user".
     /// </summary>
-    public class MediaSearchService
+    internal class MediaSearchService
     {
         private readonly ILibraryManager libraryManager;
         private readonly ILogger logger;
@@ -40,7 +40,7 @@ namespace RecommendMe.Services
             }
 
             var effectiveMediaTypes = allowedMediaTypes
-                .Where(t => t != Models.RecommendableMediaTypes.BoxSet && t != Models.RecommendableMediaTypes.Season)
+                .Where(t => t != Models.RecommendableMediaTypes.Season)
                 .ToArray();
 
             var regularMediaTypes = effectiveMediaTypes

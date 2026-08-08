@@ -75,14 +75,14 @@ namespace RecommendMe.UI.Admin
             return state;
         }
 
-        internal static string PolicyName(SendPolicyType policy)
+        internal static string PolicyName(SendPolicy policy)
         {
             switch (policy)
             {
-                case SendPolicyType.Everyone: return "Everyone";
-                case SendPolicyType.NoOne: return "No One";
-                case SendPolicyType.AllowedUsers: return "Allowed Users";
-                case SendPolicyType.GroupMembers: return "Group Members";
+                case SendPolicy.Everyone: return "Everyone";
+                case SendPolicy.NoOne: return "No One";
+                case SendPolicy.AllowedUsers: return "Allowed Users";
+                case SendPolicy.GroupMembers: return "Group Members";
                 default: return policy.ToString();
             }
         }

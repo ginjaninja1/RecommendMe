@@ -81,7 +81,7 @@ namespace RecommendMe.UI.Recommend
         private User CurrentUser =>
             this.User != null ? Plugin.Instance.UserManager.GetUserById(this.User.Id) : null;
 
-        public override Task<IPluginUIView> RunCommand(string itemId, string commandId, string data)
+        public override async Task<IPluginUIView> RunCommand(string itemId, string commandId, string data)
         {
             var currentUser = this.CurrentUser;
 
@@ -90,17 +90,17 @@ namespace RecommendMe.UI.Recommend
                 var unavailableUi = this.ContentData as RecommendUI ?? new RecommendUI();
                 unavailableUi.StatusMessage = RecommendViewBuilder.BuildStatusMessage("Could not identify the current user - please reload the page.", false);
                 this.ContentData = unavailableUi;
-                return Task.FromResult<IPluginUIView>(this);
+                return this;
             }
 
             // Check every postback as well as initial page rendering. This
             // prevents stale or forged commands from searching, expanding
             // results, or attempting a recommendation.
-            if (Plugin.Instance.PermissionService.IsAccessSuspendedAsync(currentUser).GetAwaiter().GetResult())
+            if (await Plugin.Instance.PermissionService.IsAccessSuspendedAsync(currentUser).ConfigureAwait(false))
             {
                 this.ContentData = new SuspendedUI();
                 this.RaiseUIViewInfoChanged();
-                return Task.FromResult<IPluginUIView>(this);
+                return this;
             }
 
             var ui = this.ContentData as RecommendUI ?? new RecommendUI();
@@ -119,19 +119,19 @@ namespace RecommendMe.UI.Recommend
                 {
                     ui.SearchTerm = incoming.SearchTerm;
                     ui.SelectedMediaTypes = incoming.SelectedMediaTypes ?? string.Empty;
-                    ui.SelectedTargetUserName = incoming.SelectedTargetUserName;
+                    ui.SelectedTargetUserId = incoming.SelectedTargetUserId;
                     ui.IsPrivate = incoming.IsPrivate;
                 }
             }
 
             if (commandId == RecommendCommands.Search)
             {
-                return Task.FromResult(this.HandleSearch(ui, currentUser));
+                return await this.HandleSearchAsync(ui, currentUser).ConfigureAwait(false);
             }
 
             if (RecommendCommands.TryParseSend(commandId, out var itemToRecommendId))
             {
-                return this.HandleSendAsync(ui, currentUser, itemToRecommendId);
+                return await this.HandleSendAsync(ui, currentUser, itemToRecommendId).ConfigureAwait(false);
             }
 
             if (RecommendCommands.TryParseExpand(commandId, out var itemToExpandId))
@@ -144,21 +144,21 @@ namespace RecommendMe.UI.Recommend
                         itemToExpandId,
                         () => this.searchService.GetChildren(currentUser, parent));
                 }
-                return Task.FromResult<IPluginUIView>(this);
+                return this;
             }
 
             // updateformstate and anything else: refresh the target list
             // (cheap) and re-render with whatever the client posted back.
-            ui.TargetUserChoices = RecommendViewBuilder.BuildTargetUserChoicesAsync(currentUser).GetAwaiter().GetResult();
-            return Task.FromResult<IPluginUIView>(this);
+            ui.TargetUserChoices = await RecommendViewBuilder.BuildTargetUserChoicesAsync(currentUser).ConfigureAwait(false);
+            return this;
         }
 
-        private IPluginUIView HandleSearch(RecommendUI ui, User currentUser)
+        private async Task<IPluginUIView> HandleSearchAsync(RecommendUI ui, User currentUser)
         {
             try
             {
-                ui.TargetUserChoices = RecommendViewBuilder.BuildTargetUserChoicesAsync(currentUser).GetAwaiter().GetResult();
-                var globallyAllowedTypes = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult().GloballyAllowedMediaTypes;
+                ui.TargetUserChoices = await RecommendViewBuilder.BuildTargetUserChoicesAsync(currentUser).ConfigureAwait(false);
+                var globallyAllowedTypes = (await Plugin.Instance.AdminSettingsStore.GetAsync().ConfigureAwait(false)).GloballyAllowedMediaTypes;
                 ui.MediaTypeChoices = RecommendViewBuilder.BuildMediaTypeChoices(globallyAllowedTypes);
                 var selectedTypes = (ui.SelectedMediaTypes ?? string.Empty)
                     .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
@@ -193,7 +193,7 @@ namespace RecommendMe.UI.Recommend
         {
             try
             {
-                var targetUser = RecommendViewBuilder.ResolveTargetUser(ui.SelectedTargetUserName, currentUser);
+                var targetUser = RecommendViewBuilder.ResolveTargetUser(ui.SelectedTargetUserId, currentUser);
                 var item = Plugin.Instance.LibraryManager.GetItemById(itemId);
 
                 if (targetUser == null || item == null)
@@ -213,12 +213,12 @@ namespace RecommendMe.UI.Recommend
 
                 var status = result switch
                 {
-                    RecommendationResult.Success => ($"Recommended to {targetUser.Name}.", true),
-                    RecommendationResult.NotPermitted => ("You don't have permission to recommend this to that user.", false),
-                    RecommendationResult.RecipientBlockedSender => ($"{targetUser.Name} is not accepting recommendations from you.", false),
-                    RecommendationResult.RecipientOptedOutMediaType => ($"{targetUser.Name} is not accepting {mediaType} recommendations from you.", false),
-                    RecommendationResult.AlreadyWatchedByRecipient => ($"{targetUser.Name} has already watched this.", false),
-                    RecommendationResult.AlreadyInRecipientCollection => ($"{targetUser.Name} already has this in their recommendation collection.", false),
+                    RecommendationSendResult.Success => ($"Recommended to {targetUser.Name}.", true),
+                    RecommendationSendResult.NotPermitted => ("You don't have permission to recommend this to that user.", false),
+                    RecommendationSendResult.RecipientBlockedSender => ($"{targetUser.Name} is not accepting recommendations from you.", false),
+                    RecommendationSendResult.RecipientOptedOutMediaType => ($"{targetUser.Name} is not accepting {mediaType} recommendations from you.", false),
+                    RecommendationSendResult.AlreadyWatchedByRecipient => ($"{targetUser.Name} has already watched this.", false),
+                    RecommendationSendResult.AlreadyInRecipientCollection => ($"{targetUser.Name} already has this in their recommendation collection.", false),
                     _ => ("Something went wrong.", false)
                 };
                 RecommendViewBuilder.TrySetRecommendationStatus(ui.SearchResults, itemId, status.Item1, status.Item2);

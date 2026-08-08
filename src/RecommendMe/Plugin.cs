@@ -69,10 +69,14 @@ namespace RecommendMe
             this.CollectionSyncService = new CollectionSyncService(
                 applicationHost.Resolve<ICollectionManager>(),
                 this.LibraryManager,
+                this.UserManager,
                 this.CollectionRegistryStore,
+                this.AdminSettingsStore,
                 this.logger);
 
-            this.NotificationService = new NotificationService(applicationHost.Resolve<ISessionManager>());
+            this.NotificationService = new NotificationService(
+                applicationHost.Resolve<ISessionManager>(),
+                this.logger);
 
             this.RecommendationService = new RecommendationService(
                 this.PermissionService,
@@ -81,6 +85,8 @@ namespace RecommendMe
                 this.RecommendationStore,
                 this.AdminSettingsStore,
                 this.userDataManager,
+                this.UserManager,
+                this.LibraryManager,
                 this.logger);
 
             // Publish only a fully constructed instance. If construction of a
@@ -93,28 +99,28 @@ namespace RecommendMe
 
         // Exposed so UI controllers/commands (which aren't DI-constructed by
         // Emby) can reach the same singleton service instances.
-        public AdminSettingsStore AdminSettingsStore { get; }
+        internal AdminSettingsStore AdminSettingsStore { get; }
 
-        public RecommendationStore RecommendationStore { get; }
+        internal RecommendationStore RecommendationStore { get; }
 
-        public UserPreferenceStore UserPreferenceStore { get; }
+        internal UserPreferenceStore UserPreferenceStore { get; }
 
-        public CollectionRegistryStore CollectionRegistryStore { get; }
+        internal CollectionRegistryStore CollectionRegistryStore { get; }
 
-        public PermissionService PermissionService { get; }
+        internal PermissionService PermissionService { get; }
 
-        public CollectionSyncService CollectionSyncService { get; }
+        internal CollectionSyncService CollectionSyncService { get; }
 
-        public NotificationService NotificationService { get; }
+        internal NotificationService NotificationService { get; }
 
-        public RecommendationService RecommendationService { get; }
+        internal RecommendationService RecommendationService { get; }
 
-        public IUserManager UserManager { get; }
+        internal IUserManager UserManager { get; }
 
-        public ILibraryManager LibraryManager { get; }
+        internal ILibraryManager LibraryManager { get; }
 
         /// <summary>Exposed for UI-layer code (e.g. HistoryViewBuilder) that isn't DI-constructed and has no other route to the plugin's logger.</summary>
-        public ILogger Logger => this.logger;
+        internal ILogger Logger => this.logger;
 
         /// <summary>
         /// Convenience wrapper around the non-obsolete GetUserList(UserQuery)
@@ -123,7 +129,7 @@ namespace RecommendMe
         /// admin matrix / target-user dropdowns genuinely do need the full
         /// list. An empty UserQuery returns all users.
         /// </summary>
-        public IReadOnlyList<User> GetAllUsers() =>
+        internal IReadOnlyList<User> GetAllUsers() =>
             this.UserManager.GetUserList(new UserQuery());
 
         public override string Description =>

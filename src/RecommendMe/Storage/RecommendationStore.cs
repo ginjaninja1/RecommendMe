@@ -10,15 +10,6 @@ using RecommendMe.Models;
 namespace RecommendMe.Storage
 {
     /// <summary>
-    /// Wrapper type so JsonFileRepository&lt;T&gt;'s `new()` constraint is
-    /// satisfiable for a bare list.
-    /// </summary>
-    public class RecommendationRecordCollection
-    {
-        public List<RecommendationRecord> Records { get; set; } = new List<RecommendationRecord>();
-    }
-
-    /// <summary>
     /// Persists the recommendation history log to recommendations.json. This
     /// is write-only history for the History dialog and the watched-cleanup
     /// hook (ResolveWatchedAsync); it is NOT consulted for submission-time
@@ -28,7 +19,7 @@ namespace RecommendMe.Storage
     /// Active status can go stale (e.g. a user manually removes an item from
     /// their recommendation collection outside the watched flow).
     /// </summary>
-    public class RecommendationStore
+    internal class RecommendationStore
     {
         private readonly JsonFileRepository<RecommendationRecordCollection> repository;
 

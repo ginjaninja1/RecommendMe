@@ -39,7 +39,7 @@ namespace RecommendMe.UI.Admin
             };
         }
 
-        public override Task<IPluginUIView> RunCommand(string itemId, string commandId, string data)
+        public override async Task<IPluginUIView> RunCommand(string itemId, string commandId, string data)
         {
             var state = string.IsNullOrEmpty(data)
                 ? (CollectionSettingsUI)this.ContentData
@@ -47,8 +47,8 @@ namespace RecommendMe.UI.Admin
 
             if (commandId == CollectionSettingsCommands.SaveExpansionSetting)
             {
-                Plugin.Instance.AdminSettingsStore.MutateAsync(settings =>
-                    settings.AlwaysExpandUsersAndGroups = state.AlwaysExpandUsersAndGroups).GetAwaiter().GetResult();
+                await Plugin.Instance.AdminSettingsStore.MutateAsync(settings =>
+                    settings.AlwaysExpandUsersAndGroups = state.AlwaysExpandUsersAndGroups).ConfigureAwait(false);
 
                 this.logger.Info(
                     "User and group expansion setting saved; alwaysExpand={0}.",
@@ -56,11 +56,11 @@ namespace RecommendMe.UI.Admin
             }
             else if (commandId == CollectionSettingsCommands.SaveWatchedSettings)
             {
-                Plugin.Instance.AdminSettingsStore.MutateAsync(settings =>
+                await Plugin.Instance.AdminSettingsStore.MutateAsync(settings =>
                 {
                     settings.ClearWatchedRecommendations = state.ClearWatchedRecommendations;
                     settings.PreventWatchedRecommendations = state.PreventWatchedRecommendations;
-                }).GetAwaiter().GetResult();
+                }).ConfigureAwait(false);
 
                 this.logger.Info(
                     "Watched recommendation settings saved; clear={0}, prevent={1}.",
@@ -72,17 +72,17 @@ namespace RecommendMe.UI.Admin
                 state.RecommendationCollectionPrefix = state.RecommendationCollectionPrefix ?? string.Empty;
                 state.RecommendationCollectionSuffix = state.RecommendationCollectionSuffix ?? string.Empty;
 
-                Plugin.Instance.AdminSettingsStore.MutateAsync(settings =>
+                await Plugin.Instance.AdminSettingsStore.MutateAsync(settings =>
                 {
                     settings.RecommendationCollectionPrefix = state.RecommendationCollectionPrefix;
                     settings.RecommendationCollectionSuffix = state.RecommendationCollectionSuffix;
-                }).GetAwaiter().GetResult();
+                }).ConfigureAwait(false);
 
                 try
                 {
-                    var result = Plugin.Instance.CollectionSyncService
+                    var result = await Plugin.Instance.CollectionSyncService
                         .RenameInstantiatedCollectionsAsync(state.RecommendationCollectionPrefix, state.RecommendationCollectionSuffix)
-                        .GetAwaiter().GetResult();
+                        .ConfigureAwait(false);
                     SetStatus(state, $"Collection naming saved. Renamed {result.Renamed} existing collection(s); skipped {result.Skipped} stale or ownerless registry entry/entries.", true);
                     this.logger.Info("Collection naming applied; renamed={0}, skipped={1}.", result.Renamed, result.Skipped);
                 }
@@ -95,7 +95,7 @@ namespace RecommendMe.UI.Admin
 
             this.Rebuild(state);
             this.RaiseUIViewInfoChanged();
-            return Task.FromResult<IPluginUIView>(this);
+            return this;
         }
 
         private static void SetStatus(CollectionSettingsUI state, string message, bool success)

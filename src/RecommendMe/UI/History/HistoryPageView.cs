@@ -1,5 +1,4 @@
 using System.Threading.Tasks;
-using MediaBrowser.Controller;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Plugins.UI.Views;
@@ -10,12 +9,9 @@ namespace RecommendMe.UI.History
     /// <summary>User-facing History tab that opens the full-screen history view.</summary>
     internal class HistoryPageView : PluginPageView
     {
-        private readonly IServerApplicationHost applicationHost;
-
-        public HistoryPageView(PluginInfo pluginInfo, IServerApplicationHost applicationHost)
+        public HistoryPageView(PluginInfo pluginInfo)
             : base(pluginInfo.Id)
         {
-            this.applicationHost = applicationHost;
             this.ShowSave = false;
             this.ShowBack = false;
             this.ContentData = new HistoryPageUI();
@@ -46,34 +42,31 @@ namespace RecommendMe.UI.History
         private User CurrentUser =>
             this.User != null ? Plugin.Instance.UserManager.GetUserById(this.User.Id) : null;
 
-        public override Task<IPluginUIView> RunCommand(string itemId, string commandId, string data)
+        public override async Task<IPluginUIView> RunCommand(string itemId, string commandId, string data)
         {
             var currentUser = this.CurrentUser;
             if (currentUser == null)
             {
-                return Task.FromResult<IPluginUIView>(this);
+                return this;
             }
 
             var isAdministrator = this.User?.Policy?.IsAdministrator == true;
             if (!isAdministrator
-                && Plugin.Instance.PermissionService.IsAccessSuspendedAsync(currentUser).GetAwaiter().GetResult())
+                && await Plugin.Instance.PermissionService.IsAccessSuspendedAsync(currentUser).ConfigureAwait(false))
             {
                 this.ContentData = new SuspendedUI();
                 this.RaiseUIViewInfoChanged();
-                return Task.FromResult<IPluginUIView>(this);
+                return this;
             }
 
             if (commandId == HistoryCommands.Open)
             {
-                IPluginUIView dialog = new HistoryDialogView(
-                    this.PluginId,
-                    currentUser,
-                    isAdministrator,
-                    this.applicationHost);
-                return Task.FromResult(dialog);
+                return await HistoryDialogView
+                    .CreateAsync(this.PluginId, currentUser, isAdministrator)
+                    .ConfigureAwait(false);
             }
 
-            return Task.FromResult<IPluginUIView>(this);
+            return this;
         }
     }
 }

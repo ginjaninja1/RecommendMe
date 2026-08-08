@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using Emby.Web.GenericEdit.Common;
@@ -66,7 +67,6 @@ namespace RecommendMe.UI.Recommend
                 case RecommendableMediaTypes.MusicArtist: return "Music artists";
                 case RecommendableMediaTypes.MusicAlbum: return "Music albums";
                 case RecommendableMediaTypes.Song: return "Songs";
-                case RecommendableMediaTypes.BoxSet: return "Collections";
                 default: return type;
             }
         }
@@ -81,12 +81,11 @@ namespace RecommendMe.UI.Recommend
                 return new List<EditorSelectOption>();
             }
 
-            // Value is always the raw, unmodified username - ResolveTargetUser
-            // matches on this. Only the display Name gets the "(yourself)"
-            // decoration, so there's no fragile string-suffix matching.
             var choices = new List<EditorSelectOption>
             {
-                new EditorSelectOption(currentUser.Name, currentUser.Name + " (yourself)")
+                new EditorSelectOption(
+                    currentUser.InternalId.ToString(CultureInfo.InvariantCulture),
+                    currentUser.Name + " (yourself)")
             };
 
             var allUsers = plugin.GetAllUsers();
@@ -112,7 +111,9 @@ namespace RecommendMe.UI.Recommend
 
                 if (PermissionService.IsTargetAllowed(currentUserEntry, candidate.InternalId, settings))
                 {
-                    choices.Add(new EditorSelectOption(candidate.Name, candidate.Name));
+                    choices.Add(new EditorSelectOption(
+                        candidate.InternalId.ToString(CultureInfo.InvariantCulture),
+                        candidate.Name));
                 }
             }
 
@@ -231,26 +232,24 @@ namespace RecommendMe.UI.Recommend
                 case RecommendableMediaTypes.Song: return IconNames.music_note;
                 case RecommendableMediaTypes.MusicAlbum: return IconNames.music_video;
                 case RecommendableMediaTypes.Movie: return IconNames.video_library;
-                case RecommendableMediaTypes.BoxSet: return IconNames.folder_special;
                 case RecommendableMediaTypes.Series: return IconNames.tv;
                 default: return type.IndexOf("Person", System.StringComparison.OrdinalIgnoreCase) >= 0 ? IconNames.person_pin_circle : IconNames.input;
             }
         }
 
-        /// <summary>Resolves the Value posted back from TargetUserChoices (a raw username) to a real User.</summary>
         public static User ResolveTargetUser(string selectedValue, User currentUser)
         {
-            if (string.IsNullOrEmpty(selectedValue))
+            if (!long.TryParse(selectedValue, NumberStyles.None, CultureInfo.InvariantCulture, out var userId))
             {
                 return null;
             }
 
-            if (selectedValue == currentUser.Name)
+            if (userId == currentUser.InternalId)
             {
                 return currentUser;
             }
 
-            return Plugin.Instance.GetAllUsers().FirstOrDefault(u => u.Name == selectedValue);
+            return Plugin.Instance.GetAllUsers().FirstOrDefault(user => user.InternalId == userId);
         }
 
         public static GenericItemList BuildStatusMessage(string primaryText, bool success)

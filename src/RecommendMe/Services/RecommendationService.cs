@@ -5,30 +5,12 @@ using System.Linq;
 using System.Threading;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Logging;
+using MediaBrowser.Model.Querying;
 using RecommendMe.Models;
 using RecommendMe.Storage;
 
 namespace RecommendMe.Services
 {
-    public enum RecommendationResult
-    {
-        Success,
-        NotPermitted,
-        RecipientBlockedSender,
-        RecipientOptedOutMediaType,
-        AlreadyWatchedByRecipient,
-
-        /// <summary>
-        /// The item is currently a member of the recipient's recommendation
-        /// collection (checked live - see
-        /// CollectionSyncService.IsItemInRecipientCollectionAsync). Renamed
-        /// from the old AlreadyActiveRecommendation: that name described a
-        /// check against the JSON history log, which is no longer part of
-        /// this gate at all (see remarks on SendRecommendationAsync).
-        /// </summary>
-        AlreadyInRecipientCollection
-    }
-
     /// <summary>
     /// Top-level orchestrator for sending a recommendation and for reacting
     /// to a recipient watching a recommended item. This is the only class
@@ -36,7 +18,7 @@ namespace RecommendMe.Services
     /// log, and the Emby collection - everything else in Services/ is a
     /// single-purpose collaborator this class composes.
     /// </summary>
-    public class RecommendationService
+    internal class RecommendationService
     {
         private readonly PermissionService permissionService;
         private readonly CollectionSyncService collectionSyncService;
@@ -44,7 +26,10 @@ namespace RecommendMe.Services
         private readonly RecommendationStore recommendationStore;
         private readonly AdminSettingsStore adminSettingsStore;
         private readonly IUserDataManager userDataManager;
+        private readonly IUserManager userManager;
+        private readonly ILibraryManager libraryManager;
         private readonly ILogger logger;
+        private readonly SemaphoreSlim sendGate = new SemaphoreSlim(1, 1);
 
         public RecommendationService(
             PermissionService permissionService,
@@ -53,6 +38,8 @@ namespace RecommendMe.Services
             RecommendationStore recommendationStore,
             AdminSettingsStore adminSettingsStore,
             IUserDataManager userDataManager,
+            IUserManager userManager,
+            ILibraryManager libraryManager,
             ILogger logger)
         {
             this.permissionService = permissionService;
@@ -61,6 +48,8 @@ namespace RecommendMe.Services
             this.recommendationStore = recommendationStore;
             this.adminSettingsStore = adminSettingsStore;
             this.userDataManager = userDataManager;
+            this.userManager = userManager;
+            this.libraryManager = libraryManager;
             this.logger = logger;
         }
 
@@ -68,7 +57,7 @@ namespace RecommendMe.Services
         /// Sends <paramref name="item"/> from <paramref name="sender"/> to
         /// <paramref name="recipient"/>.
         ///
-        /// Submission-time gate (spec, 2026-08-07): all of the following
+        /// Submission-time gate: all of the following
         /// must hold, and NONE of them consult the JSON recommendation log -
         /// that log is write-only history for the History dialog, never a
         /// gating source. Gating against it was the root cause of recipients
@@ -83,7 +72,7 @@ namespace RecommendMe.Services
         ///   3. When enabled by the admin, the item is not already marked
         ///      watched for the recipient.
         /// </summary>
-        public async Task<RecommendationResult> SendRecommendationAsync(
+        public async Task<RecommendationSendResult> SendRecommendationAsync(
             User sender,
             User recipient,
             BaseItem item,
@@ -97,68 +86,98 @@ namespace RecommendMe.Services
                 item.InternalId, item.Name, mediaType,
                 isPrivate);
 
-            var permission = await this.permissionService.CanSendAsync(sender, recipient, mediaType).ConfigureAwait(false);
-            this.logger.Debug("Permission check result = {0}", permission);
-            switch (permission)
+            await this.sendGate.WaitAsync().ConfigureAwait(false);
+            try
             {
-                case SendPermissionResult.AdminBlocked:
-                    return RecommendationResult.NotPermitted;
-                case SendPermissionResult.RecipientBlockedSender:
-                    return RecommendationResult.RecipientBlockedSender;
-                case SendPermissionResult.RecipientOptedOutMediaType:
-                    return RecommendationResult.RecipientOptedOutMediaType;
-            }
+                var permission = await this.permissionService.CanSendAsync(sender, recipient, mediaType).ConfigureAwait(false);
+                this.logger.Debug("Permission check result = {0}", permission);
+                switch (permission)
+                {
+                    case SendPermissionResult.AdminBlocked:
+                        return RecommendationSendResult.NotPermitted;
+                    case SendPermissionResult.RecipientBlockedSender:
+                        return RecommendationSendResult.RecipientBlockedSender;
+                    case SendPermissionResult.RecipientOptedOutMediaType:
+                        return RecommendationSendResult.RecipientOptedOutMediaType;
+                }
 
-            var settings = await this.adminSettingsStore.GetAsync().ConfigureAwait(false);
-            if (settings.PreventWatchedRecommendations)
-            {
-                var recipientData = this.userDataManager.GetUserData(recipient, item);
-                if (recipientData != null && recipientData.Played)
+                var settings = await this.adminSettingsStore.GetAsync().ConfigureAwait(false);
+                if (settings.PreventWatchedRecommendations)
+                {
+                    var recipientData = this.userDataManager.GetUserData(recipient, item);
+                    if (recipientData != null && recipientData.Played)
+                    {
+                        this.logger.Debug(
+                            "Blocked - item {0} already watched by {1}.",
+                            item.InternalId,
+                            recipient.Name);
+                        return RecommendationSendResult.AlreadyWatchedByRecipient;
+                    }
+                }
+
+                var alreadyInCollection = await this.collectionSyncService
+                    .IsItemInRecipientCollectionAsync(recipient, item.InternalId)
+                    .ConfigureAwait(false);
+                if (alreadyInCollection)
                 {
                     this.logger.Debug(
-                        "Blocked - item {0} already watched by {1}.",
+                        "Blocked - item {0} already in {1}'s recommendation collection.",
                         item.InternalId,
                         recipient.Name);
-                    return RecommendationResult.AlreadyWatchedByRecipient;
+                    return RecommendationSendResult.AlreadyInRecipientCollection;
                 }
-            }
 
-            var alreadyInCollection = await this.collectionSyncService
-                .IsItemInRecipientCollectionAsync(recipient, item.InternalId)
-                .ConfigureAwait(false);
-            if (alreadyInCollection)
-            {
+                var record = new RecommendationRecord
+                {
+                    ItemId = item.InternalId,
+                    ItemName = item.Name,
+                    MediaType = mediaType,
+                    SentByUserId = sender.InternalId,
+                    SentByUserName = sender.Name,
+                    SentToUserId = recipient.InternalId,
+                    SentToUserName = recipient.Name,
+                    IsPrivate = isPrivate
+                };
+
+                try
+                {
+                    await this.collectionSyncService.AddItemAsync(recipient, item).ConfigureAwait(false);
+                    await this.recommendationStore.AddAsync(record).ConfigureAwait(false);
+                }
+                catch
+                {
+                    try
+                    {
+                        await this.collectionSyncService.RemoveItemAsync(recipient, item.InternalId).ConfigureAwait(false);
+                    }
+                    catch (Exception compensationError)
+                    {
+                        this.logger.ErrorException(
+                            "Failed to roll back collection membership for item {0} and user {1}",
+                            compensationError,
+                            item.InternalId,
+                            recipient.InternalId);
+                    }
+
+                    throw;
+                }
+
                 this.logger.Debug(
-                    "Blocked - item {0} already in {1}'s recommendation collection.",
+                    "Recommendation {0} recorded and item {1} added to {2}'s collection.",
+                    record.RecommendationId,
                     item.InternalId,
                     recipient.Name);
-                return RecommendationResult.AlreadyInRecipientCollection;
+            }
+            finally
+            {
+                this.sendGate.Release();
             }
 
-            var record = new RecommendationRecord
-            {
-                ItemId = item.InternalId,
-                ItemName = item.Name,
-                MediaType = mediaType,
-                SentByUserId = sender.InternalId,
-                SentByUserName = sender.Name,
-                SentToUserId = recipient.InternalId,
-                SentToUserName = recipient.Name,
-                IsPrivate = isPrivate
-            };
+            await this.notificationService
+                .NotifyRecommendationReceivedAsync(recipient, sender, item.Name, mediaType)
+                .ConfigureAwait(false);
 
-            await this.recommendationStore.AddAsync(record).ConfigureAwait(false);
-            await this.collectionSyncService.AddItemAsync(recipient, item).ConfigureAwait(false);
-
-            this.notificationService.NotifyRecommendationReceived(recipient, sender, item.Name, mediaType);
-
-            this.logger.Debug(
-                "Recommendation {0} recorded and item {1} added to {2}'s collection.",
-                record.RecommendationId,
-                item.InternalId,
-                recipient.Name);
-
-            return RecommendationResult.Success;
+            return RecommendationSendResult.Success;
         }
 
         /// <summary>
@@ -194,7 +213,7 @@ namespace RecommendMe.Services
                 .Where(r => r.Status == RecommendationStatus.Active)
                 .GroupBy(r => new { r.SentToUserId, r.ItemId })
                 .ToArray();
-            var users = Plugin.Instance.GetAllUsers().ToDictionary(u => u.InternalId);
+            var users = this.userManager.GetUserList(new UserQuery()).ToDictionary(user => user.InternalId);
             var removed = 0;
 
             for (var i = 0; i < active.Length; i++)
@@ -205,7 +224,7 @@ namespace RecommendMe.Services
                 var key = active[i].Key;
                 if (!users.TryGetValue(key.SentToUserId, out var user)) continue;
 
-                var item = Plugin.Instance.LibraryManager.GetItemById(key.ItemId);
+                var item = this.libraryManager.GetItemById(key.ItemId);
                 if (item == null) continue;
 
                 var userData = this.userDataManager.GetUserData(user, item);

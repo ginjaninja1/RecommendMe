@@ -7,7 +7,7 @@ namespace RecommendMe.Storage
     /// Resolves the single data directory all RecommendMe JSON files live
     /// under: ProgramData\data\RecommendMe\.
     /// </summary>
-    public static class RecommendMeDataPaths
+    internal static class RecommendMeDataPaths
     {
         private const string FolderName = "RecommendMe";
 

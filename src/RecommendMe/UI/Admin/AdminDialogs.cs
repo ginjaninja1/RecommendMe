@@ -27,10 +27,10 @@ namespace RecommendMe.UI.Admin
         [Browsable(false)]
         public List<EditorSelectOption> SendPolicyTypes { get; set; } = new List<EditorSelectOption>
         {
-            new EditorSelectOption(nameof(SendPolicyType.Everyone), "Everyone"),
-            new EditorSelectOption(nameof(SendPolicyType.NoOne), "No One"),
-            new EditorSelectOption(nameof(SendPolicyType.AllowedUsers), "Allowed Users"),
-            new EditorSelectOption(nameof(SendPolicyType.GroupMembers), "Group Members")
+            new EditorSelectOption(nameof(SendPolicy.Everyone), "Everyone"),
+            new EditorSelectOption(nameof(SendPolicy.NoOne), "No One"),
+            new EditorSelectOption(nameof(SendPolicy.AllowedUsers), "Allowed Users"),
+            new EditorSelectOption(nameof(SendPolicy.GroupMembers), "Group Members")
         };
 
         [DisplayName("Select Send Policy")]
@@ -101,7 +101,7 @@ namespace RecommendMe.UI.Admin
             {
                 IsVisible = !settings.AlwaysExpandUsersAndGroups
             };
-            var active = owner.SendPolicy == SendPolicyType.AllowedUsers;
+            var active = owner.SendPolicy == SendPolicy.AllowedUsers;
             foreach (var user in visible)
             {
                 var allowed = owner.AllowedTargetUserIds.Contains(user.InternalId);
@@ -130,7 +130,7 @@ namespace RecommendMe.UI.Admin
 
             var state = this.ReadState<SendToUI>(data);
 
-            if (commandId == AdminCommands.SendToRefresh && Enum.TryParse(state.SelectedSendPolicy, out SendPolicyType policy))
+            if (commandId == AdminCommands.SendToRefresh && Enum.TryParse(state.SelectedSendPolicy, out SendPolicy policy))
             {
                 Plugin.Instance.AdminSettingsStore.MutateAsync(s =>
                 {
@@ -151,7 +151,7 @@ namespace RecommendMe.UI.Admin
                 Plugin.Instance.AdminSettingsStore.MutateAsync(s =>
                 {
                     var owner = s.UserAccess.FirstOrDefault(e => e.UserId == this.userId);
-                    if (owner == null || owner.SendPolicy != SendPolicyType.AllowedUsers) return;
+                    if (owner == null || owner.SendPolicy != SendPolicy.AllowedUsers) return;
                     Toggle(owner.AllowedTargetUserIds, targetId);
                 }).GetAwaiter().GetResult();
             }

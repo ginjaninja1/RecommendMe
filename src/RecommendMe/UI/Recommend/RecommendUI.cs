@@ -13,7 +13,7 @@ namespace RecommendMe.UI.Recommend
     /// and the target-user list are rebuilt server-side on every postback;
     /// nothing here is persisted directly (see RecommendPageView for what
     /// actually gets read back off SearchTerm / SelectedMediaTypes /
-    /// SelectedTargetUserName / IsPrivate on submit).
+    /// SelectedTargetUserId / IsPrivate on submit).
     /// </summary>
     public class RecommendUI : EditableOptionsBase
     {
@@ -49,8 +49,8 @@ namespace RecommendMe.UI.Recommend
 
         [DisplayName("Recommend to")]
         [SelectItemsSource(nameof(TargetUserChoices))]
-        [AutoPostBack(RecommendCommands.UpdateFormState, nameof(SelectedTargetUserName))]
-        public string SelectedTargetUserName { get; set; }
+        [AutoPostBack(RecommendCommands.UpdateFormState, nameof(SelectedTargetUserId))]
+        public string SelectedTargetUserId { get; set; } = string.Empty;
 
         // NOTE: must be List<EditorSelectOption> (Value/Name pairs), not
         // List<string>. The GenericEdit client renders each entry's .Value

@@ -7,22 +7,6 @@ using RecommendMe.Storage;
 namespace RecommendMe.Services
 {
     /// <summary>
-    /// Why a send was or wasn't permitted. AdminBlocked covers every
-    /// server-wide/admin-matrix reason (unsupported media type, Emergency
-    /// Revocation, send policy) - these are intentionally not detailed further
-    /// to the sender, since they're the admin's policy, not the recipient's.
-    /// The Recipient* values are the recipient's own Account-tab choice, and
-    /// are surfaced back to the sender by name (see RecommendPageView).
-    /// </summary>
-    public enum SendPermissionResult
-    {
-        Allowed,
-        AdminBlocked,
-        RecipientBlockedSender,
-        RecipientOptedOutMediaType
-    }
-
-    /// <summary>
     /// Resolves whether a source user may send a recommendation of a given
     /// media type to a target user. Combines the admin-configured global
     /// media type list, the sender's own send policy/AllowedTargetUserIds
@@ -37,7 +21,7 @@ namespace RecommendMe.Services
     /// 4. Recipient's own master Blocked switch for this sender
     /// 5. Recipient's own opt-out of this specific sender/media-type
     /// </summary>
-    public class PermissionService
+    internal class PermissionService
     {
         private readonly AdminSettingsStore adminSettingsStore;
         private readonly UserPreferenceStore userPreferenceStore;
@@ -104,7 +88,7 @@ namespace RecommendMe.Services
                 {
                     UserId = user.InternalId,
                     UserName = user.Name,
-                    SendPolicy = template?.SendPolicy ?? SendPolicyType.NoOne,
+                    SendPolicy = template?.SendPolicy ?? SendPolicy.NoOne,
                     AllowNewUsers = template?.AllowNewUsers ?? false,
                     AllowedTargetUserIds = template == null
                         ? new System.Collections.Generic.List<long>()
@@ -138,11 +122,6 @@ namespace RecommendMe.Services
 
         public async Task<SendPermissionResult> CanSendAsync(User source, User target, string mediaType)
         {
-            if (mediaType == RecommendableMediaTypes.BoxSet)
-            {
-                return SendPermissionResult.AdminBlocked;
-            }
-
             await this.EnsureUserAccessEntryAsync(source).ConfigureAwait(false);
             await this.EnsureUserAccessEntryAsync(target).ConfigureAwait(false);
             var settings = await this.adminSettingsStore.GetAsync().ConfigureAwait(false);
@@ -197,13 +176,13 @@ namespace RecommendMe.Services
         {
             switch (sourceEntry.SendPolicy)
             {
-                case SendPolicyType.Everyone:
+                case SendPolicy.Everyone:
                     return true;
-                case SendPolicyType.NoOne:
+                case SendPolicy.NoOne:
                     return false;
-                case SendPolicyType.AllowedUsers:
+                case SendPolicy.AllowedUsers:
                     return sourceEntry.AllowedTargetUserIds.Contains(targetUserId);
-                case SendPolicyType.GroupMembers:
+                case SendPolicy.GroupMembers:
                     return settings.Groups.Any(g => g.MemberUserIds.Contains(sourceEntry.UserId) && g.MemberUserIds.Contains(targetUserId));
                 default:
                     return false;

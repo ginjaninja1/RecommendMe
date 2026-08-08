@@ -48,7 +48,7 @@
                     pluginInfo,
                     "RecommendMeHistory",
                     "History",
-                    info => new HistoryPageView(info, this.applicationHost)),
+                    info => new HistoryPageView(info)),
                 new TabPageController(
                     pluginInfo,
                     "RecommendMeAccount",

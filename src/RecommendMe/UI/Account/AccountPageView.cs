@@ -60,26 +60,26 @@ namespace RecommendMe.UI.Account
         private User CurrentUser =>
             this.User != null ? Plugin.Instance.UserManager.GetUserById(this.User.Id) : null;
 
-        public override Task<IPluginUIView> RunCommand(string itemId, string commandId, string data)
+        public override async Task<IPluginUIView> RunCommand(string itemId, string commandId, string data)
         {
             var currentUser = this.CurrentUser;
             if (currentUser == null)
             {
-                return Task.FromResult<IPluginUIView>(this);
+                return this;
             }
 
             // The rendered controls are not the security boundary: reject
             // stale or forged preference commands before touching the store.
-            if (Plugin.Instance.PermissionService.IsAccessSuspendedAsync(currentUser).GetAwaiter().GetResult())
+            if (await Plugin.Instance.PermissionService.IsAccessSuspendedAsync(currentUser).ConfigureAwait(false))
             {
                 this.ContentData = new SuspendedUI();
                 this.RaiseUIViewInfoChanged();
-                return Task.FromResult<IPluginUIView>(this);
+                return this;
             }
 
             if (AccountCommands.TryParseBlock(commandId, out var blockedSenderUserId))
             {
-                var prefs = Plugin.Instance.UserPreferenceStore.GetForUserAsync(currentUser.InternalId).GetAwaiter().GetResult();
+                var prefs = await Plugin.Instance.UserPreferenceStore.GetForUserAsync(currentUser.InternalId).ConfigureAwait(false);
 
                 var senderPref = prefs.SenderPreferences.FirstOrDefault(p => p.SenderUserId == blockedSenderUserId);
                 if (senderPref == null)
@@ -91,22 +91,22 @@ namespace RecommendMe.UI.Account
                 senderPref.Blocked = !senderPref.Blocked;
 
                 prefs.UserId = currentUser.InternalId;
-                Plugin.Instance.UserPreferenceStore.SaveForUserAsync(prefs).GetAwaiter().GetResult();
+                await Plugin.Instance.UserPreferenceStore.SaveForUserAsync(prefs).ConfigureAwait(false);
             }
             else if (AccountCommands.TryParse(commandId, out var senderUserId, out var mediaType))
             {
-                var settings = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult();
+                var settings = await Plugin.Instance.AdminSettingsStore.GetAsync().ConfigureAwait(false);
                 if (!settings.GloballyAllowedMediaTypes.Contains(mediaType))
                 {
                     // Centrally disabled media types remain visible so users can
                     // understand the effective policy, but their saved choice is
                     // read-only until an administrator enables the type again.
-                    this.ContentData = AccountViewBuilder.BuildAsync(currentUser).GetAwaiter().GetResult();
+                    this.ContentData = await AccountViewBuilder.BuildAsync(currentUser).ConfigureAwait(false);
                     this.RaiseUIViewInfoChanged();
-                    return Task.FromResult<IPluginUIView>(this);
+                    return this;
                 }
 
-                var prefs = Plugin.Instance.UserPreferenceStore.GetForUserAsync(currentUser.InternalId).GetAwaiter().GetResult();
+                var prefs = await Plugin.Instance.UserPreferenceStore.GetForUserAsync(currentUser.InternalId).ConfigureAwait(false);
 
                 var senderPref = prefs.SenderPreferences.FirstOrDefault(p => p.SenderUserId == senderUserId);
                 if (senderPref == null)
@@ -120,9 +120,9 @@ namespace RecommendMe.UI.Account
                 // master Accept recommendations switch is off.
                 if (senderPref.Blocked)
                 {
-                    this.ContentData = AccountViewBuilder.BuildAsync(currentUser).GetAwaiter().GetResult();
+                    this.ContentData = await AccountViewBuilder.BuildAsync(currentUser).ConfigureAwait(false);
                     this.RaiseUIViewInfoChanged();
-                    return Task.FromResult<IPluginUIView>(this);
+                    return this;
                 }
 
                 if (senderPref.OptedOutMediaTypes.Contains(mediaType))
@@ -135,13 +135,13 @@ namespace RecommendMe.UI.Account
                 }
 
                 prefs.UserId = currentUser.InternalId;
-                Plugin.Instance.UserPreferenceStore.SaveForUserAsync(prefs).GetAwaiter().GetResult();
+                await Plugin.Instance.UserPreferenceStore.SaveForUserAsync(prefs).ConfigureAwait(false);
             }
 
-            this.ContentData = AccountViewBuilder.BuildAsync(currentUser).GetAwaiter().GetResult();
+            this.ContentData = await AccountViewBuilder.BuildAsync(currentUser).ConfigureAwait(false);
             this.RaiseUIViewInfoChanged();
 
-            return Task.FromResult<IPluginUIView>(this);
+            return this;
         }
     }
 }

@@ -7,6 +7,7 @@ using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Persistence;
 using MediaBrowser.Model.Logging;
+using MediaBrowser.Model.Querying;
 using RecommendMe.Storage;
 
 namespace RecommendMe.Services
@@ -19,23 +20,29 @@ namespace RecommendMe.Services
     /// and never forces a browser/view refresh; Emby's own collection
     /// rendering handles that.
     /// </summary>
-    public class CollectionSyncService
+    internal class CollectionSyncService
     {
         private readonly ICollectionManager collectionManager;
         private readonly ILibraryManager libraryManager;
+        private readonly IUserManager userManager;
         private readonly CollectionRegistryStore registryStore;
+        private readonly AdminSettingsStore adminSettingsStore;
         private readonly ILogger logger;
         private readonly SemaphoreSlim collectionGate = new SemaphoreSlim(1, 1);
 
         public CollectionSyncService(
             ICollectionManager collectionManager,
             ILibraryManager libraryManager,
+            IUserManager userManager,
             CollectionRegistryStore registryStore,
+            AdminSettingsStore adminSettingsStore,
             ILogger logger)
         {
             this.collectionManager = collectionManager;
             this.libraryManager = libraryManager;
+            this.userManager = userManager;
             this.registryStore = registryStore;
+            this.adminSettingsStore = adminSettingsStore;
             this.logger = logger;
         }
 
@@ -45,8 +52,7 @@ namespace RecommendMe.Services
         private static string PublicId(BoxSet collection) => collection.Id.ToString("N");
 
         private static bool RegistryIdentityMatches(CollectionRegistryEntry entry, BoxSet collection) =>
-            string.IsNullOrEmpty(entry.EmbyCollectionId)
-            || string.Equals(entry.EmbyCollectionId, PublicId(collection), StringComparison.OrdinalIgnoreCase);
+            string.Equals(entry.EmbyCollectionId, PublicId(collection), StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
         /// Gets the recipient's recommendation collection, creating it (and
@@ -83,10 +89,6 @@ namespace RecommendMe.Services
                 var existingItem = this.libraryManager.GetItemById(registryEntry.CollectionId) as BoxSet;
                 if (existingItem != null && RegistryIdentityMatches(registryEntry, existingItem))
                 {
-                    if (string.IsNullOrEmpty(registryEntry.EmbyCollectionId))
-                    {
-                        await this.registryStore.RegisterAsync(recipient.InternalId, existingItem.InternalId, existingItem.Name, PublicId(existingItem)).ConfigureAwait(false);
-                    }
                     return existingItem;
                 }
 
@@ -96,7 +98,7 @@ namespace RecommendMe.Services
                     recipient.Name);
             }
 
-            var settings = await Plugin.Instance.AdminSettingsStore.GetAsync().ConfigureAwait(false);
+            var settings = await this.adminSettingsStore.GetAsync().ConfigureAwait(false);
             var name = CollectionNameFor(recipient, settings.RecommendationCollectionPrefix, settings.RecommendationCollectionSuffix);
 
             var created = await this.collectionManager.CreateCollection(new CollectionCreationOptions
@@ -114,7 +116,7 @@ namespace RecommendMe.Services
                     $"CreateCollection returned no BoxSet for '{name}' (seed item {seedItem.InternalId}).");
             }
 
-            await this.registryStore.RegisterAsync(recipient.InternalId, created.InternalId, name, PublicId(created)).ConfigureAwait(false);
+            await this.registryStore.RegisterAsync(recipient.InternalId, created.InternalId, PublicId(created)).ConfigureAwait(false);
 
             return created;
         }
@@ -137,7 +139,7 @@ namespace RecommendMe.Services
         {
             var result = new CollectionRenameResult();
             var entries = await this.registryStore.GetAllAsync().ConfigureAwait(false);
-            var users = Plugin.Instance.GetAllUsers().ToDictionary(u => u.InternalId);
+            var users = this.userManager.GetUserList(new UserQuery()).ToDictionary(user => user.InternalId);
 
             foreach (var entry in entries)
             {
@@ -163,7 +165,7 @@ namespace RecommendMe.Services
                     result.Renamed++;
                 }
 
-                await this.registryStore.RegisterAsync(entry.UserId, collection.InternalId, newName, PublicId(collection)).ConfigureAwait(false);
+                await this.registryStore.RegisterAsync(entry.UserId, collection.InternalId, PublicId(collection)).ConfigureAwait(false);
             }
 
             return result;
@@ -252,9 +254,4 @@ namespace RecommendMe.Services
         }
     }
 
-    public class CollectionRenameResult
-    {
-        public int Renamed { get; set; }
-        public int Skipped { get; set; }
-    }
 }

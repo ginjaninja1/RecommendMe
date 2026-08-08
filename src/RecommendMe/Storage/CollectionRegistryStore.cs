@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using MediaBrowser.Common.Configuration;
@@ -8,29 +8,7 @@ using MediaBrowser.Model.Serialization;
 
 namespace RecommendMe.Storage
 {
-    public class CollectionRegistryEntry
-    {
-        public long UserId { get; set; }
-
-        public long CollectionId { get; set; }
-
-        public string CollectionName { get; set; }
-
-        /// <summary>Stable public Emby item id, stored alongside the internal database id for validation.</summary>
-        public string EmbyCollectionId { get; set; }
-    }
-
-    public class CollectionRegistryData
-    {
-        public List<CollectionRegistryEntry> Entries { get; set; } = new List<CollectionRegistryEntry>();
-    }
-
-    /// <summary>
-    /// Maps each user to the internal Emby BoxSet (Collection) id of their
-    /// "_Recommended_username" collection, so we never have to search for it
-    /// by name and never accidentally create duplicates.
-    /// </summary>
-    public class CollectionRegistryStore
+    internal class CollectionRegistryStore
     {
         private readonly JsonFileRepository<CollectionRegistryData> repository;
 
@@ -47,59 +25,45 @@ namespace RecommendMe.Storage
                 logger);
         }
 
-        public async Task<long?> GetCollectionIdAsync(long userId)
-        {
-            var entry = await this.GetAsync(userId).ConfigureAwait(false);
-            return entry?.CollectionId;
-        }
-
-        public async Task<CollectionRegistryEntry> GetAsync(long userId)
+        public async Task<CollectionRegistryEntry?> GetAsync(long userId)
         {
             var data = await this.repository.ReadAsync().ConfigureAwait(false);
-            var entry = data.Entries.FirstOrDefault(e => e.UserId == userId);
-            return entry == null ? null : new CollectionRegistryEntry
-            {
-                UserId = entry.UserId,
-                CollectionId = entry.CollectionId,
-                CollectionName = entry.CollectionName,
-                EmbyCollectionId = entry.EmbyCollectionId
-            };
+            var entry = data.Entries.FirstOrDefault(candidate => candidate.UserId == userId);
+            return entry == null ? null : Copy(entry);
         }
 
         public async Task<List<CollectionRegistryEntry>> GetAllAsync()
         {
             var data = await this.repository.ReadAsync().ConfigureAwait(false);
-            return data.Entries.Select(e => new CollectionRegistryEntry
-            {
-                UserId = e.UserId,
-                CollectionId = e.CollectionId,
-                CollectionName = e.CollectionName,
-                EmbyCollectionId = e.EmbyCollectionId
-            }).ToList();
+            return data.Entries.Select(Copy).ToList();
         }
 
-        public Task RegisterAsync(long userId, long collectionId, string collectionName, string embyCollectionId = null)
+        public Task RegisterAsync(long userId, long collectionId, string embyCollectionId)
         {
             return this.repository.MutateAsync(data =>
             {
-                var existing = data.Entries.FirstOrDefault(e => e.UserId == userId);
+                var existing = data.Entries.FirstOrDefault(entry => entry.UserId == userId);
                 if (existing != null)
                 {
                     existing.CollectionId = collectionId;
-                    existing.CollectionName = collectionName;
-                    existing.EmbyCollectionId = embyCollectionId ?? existing.EmbyCollectionId;
+                    existing.EmbyCollectionId = embyCollectionId;
+                    return;
                 }
-                else
+
+                data.Entries.Add(new CollectionRegistryEntry
                 {
-                    data.Entries.Add(new CollectionRegistryEntry
-                    {
-                        UserId = userId,
-                        CollectionId = collectionId,
-                        CollectionName = collectionName,
-                        EmbyCollectionId = embyCollectionId
-                    });
-                }
+                    UserId = userId,
+                    CollectionId = collectionId,
+                    EmbyCollectionId = embyCollectionId
+                });
             });
         }
+
+        private static CollectionRegistryEntry Copy(CollectionRegistryEntry entry) => new CollectionRegistryEntry
+        {
+            UserId = entry.UserId,
+            CollectionId = entry.CollectionId,
+            EmbyCollectionId = entry.EmbyCollectionId
+        };
     }
 }

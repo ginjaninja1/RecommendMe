@@ -9,16 +9,11 @@ using RecommendMe.Models;
 
 namespace RecommendMe.Storage
 {
-    public class UserPreferenceCollection
-    {
-        public List<UserReceivePreferences> Users { get; set; } = new List<UserReceivePreferences>();
-    }
-
     /// <summary>
     /// Persists each user's Account-tab opt-in/out preferences to
     /// user-preferences.json.
     /// </summary>
-    public class UserPreferenceStore
+    internal class UserPreferenceStore
     {
         private readonly JsonFileRepository<UserPreferenceCollection> repository;
 

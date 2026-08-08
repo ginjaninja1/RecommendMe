@@ -1,52 +1,59 @@
-﻿using System.Linq;
+using System;
+using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Session;
+using MediaBrowser.Model.Logging;
 using MediaBrowser.Model.Session;
 
 namespace RecommendMe.Services
 {
-    /// <summary>
-    /// Fires an on-screen toast (MessageCommand over an active session) to a
-    /// recipient the moment a recommendation is sent to them. Best-effort:
-    /// if the recipient has no active session, this is a silent no-op - the
-    /// recommendation itself is already persisted and will show up in their
-    /// collection/history regardless.
-    /// </summary>
-    public class NotificationService
+    /// <summary>Sends best-effort recommendation notifications to active recipient sessions.</summary>
+    internal class NotificationService
     {
         private readonly ISessionManager sessionManager;
+        private readonly ILogger logger;
 
-        public NotificationService(ISessionManager sessionManager)
+        public NotificationService(ISessionManager sessionManager, ILogger logger)
         {
-            this.sessionManager = sessionManager;
+            this.sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
+            this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
-        public void NotifyRecommendationReceived(User recipient, User sender, string itemName, string mediaType)
+        public async Task NotifyRecommendationReceivedAsync(
+            User recipient,
+            User sender,
+            string itemName,
+            string mediaType)
         {
-            var header = "New Recommendation";
-            var text = $"{sender.Name} recommended the {mediaType.ToLowerInvariant()} \"{itemName}\"";
-
             var command = new MessageCommand
             {
-                Header = header,
-                Text = text,
+                Header = "New Recommendation",
+                Text = $"{sender.Name} recommended the {mediaType.ToLowerInvariant()} \"{itemName}\"",
                 TimeoutMs = 8000
             };
 
-            var recipientSessions = this.sessionManager.Sessions
-                .Where(s => s.UserInternalId == recipient.InternalId)
-                .ToList();
+            var sends = this.sessionManager.Sessions
+                .Where(session => session.UserInternalId == recipient.InternalId)
+                .Select(session => this.SendAsync(session.Id, command));
 
-            foreach (var session in recipientSessions)
+            await Task.WhenAll(sends).ConfigureAwait(false);
+        }
+
+        private async Task SendAsync(string sessionId, MessageCommand command)
+        {
+            try
             {
-                // Fire-and-forget: a notification failing to reach one session
-                // must never block or fail the recommendation itself.
-                _ = this.sessionManager.SendMessageCommand(
+                await this.sessionManager.SendMessageCommand(
                     controllingSessionId: null,
-                    sessionId: session.Id,
+                    sessionId: sessionId,
                     command: command,
-                    cancellationToken: CancellationToken.None);
+                    cancellationToken: CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                this.logger.ErrorException("Unable to send recommendation notification to session {0}", ex, sessionId);
             }
         }
     }
