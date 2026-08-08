@@ -17,7 +17,11 @@ namespace RecommendMe.UI.History
     /// </summary>
     internal class HistoryDialogView : PluginDialogView
     {
-        public HistoryDialogView(string pluginId, User viewer, IServerApplicationHost applicationHost)
+        public HistoryDialogView(
+            string pluginId,
+            User viewer,
+            bool isAdministrator,
+            IServerApplicationHost applicationHost)
             : base(pluginId)
         {
             var ui = new HistoryUI();
@@ -28,7 +32,7 @@ namespace RecommendMe.UI.History
             this.ShowDialogFullScreen = true;
 
             ui.Grid = HistoryViewBuilder.BuildEmptyGrid();
-            var rows = HistoryViewBuilder.BuildRowsAsync(viewer).GetAwaiter().GetResult();
+            var rows = HistoryViewBuilder.BuildRowsAsync(viewer, isAdministrator).GetAwaiter().GetResult();
             ui.Rows = rows;
         }
 

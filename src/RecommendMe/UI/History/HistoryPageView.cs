@@ -33,7 +33,9 @@ namespace RecommendMe.UI.History
                     var user = Plugin.Instance.UserManager.GetUserById(value.Id);
                     if (user != null)
                     {
-                        this.ContentData = Plugin.Instance.PermissionService.IsAccessSuspendedAsync(user).GetAwaiter().GetResult()
+                        var isAdministrator = value.Policy?.IsAdministrator == true;
+                        this.ContentData = !isAdministrator
+                            && Plugin.Instance.PermissionService.IsAccessSuspendedAsync(user).GetAwaiter().GetResult()
                             ? (MediaBrowser.Model.GenericEdit.IEditableObject)new SuspendedUI()
                             : new HistoryPageUI();
                     }
@@ -52,7 +54,9 @@ namespace RecommendMe.UI.History
                 return Task.FromResult<IPluginUIView>(this);
             }
 
-            if (Plugin.Instance.PermissionService.IsAccessSuspendedAsync(currentUser).GetAwaiter().GetResult())
+            var isAdministrator = this.User?.Policy?.IsAdministrator == true;
+            if (!isAdministrator
+                && Plugin.Instance.PermissionService.IsAccessSuspendedAsync(currentUser).GetAwaiter().GetResult())
             {
                 this.ContentData = new SuspendedUI();
                 this.RaiseUIViewInfoChanged();
@@ -61,7 +65,11 @@ namespace RecommendMe.UI.History
 
             if (commandId == HistoryCommands.Open)
             {
-                IPluginUIView dialog = new HistoryDialogView(this.PluginId, currentUser, this.applicationHost);
+                IPluginUIView dialog = new HistoryDialogView(
+                    this.PluginId,
+                    currentUser,
+                    isAdministrator,
+                    this.applicationHost);
                 return Task.FromResult(dialog);
             }
 

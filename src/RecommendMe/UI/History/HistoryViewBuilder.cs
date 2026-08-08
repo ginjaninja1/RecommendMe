@@ -1,6 +1,8 @@
 ﻿using Emby.Web.GenericEdit.Elements;
 using Emby.Web.GenericEdit.Elements.DxGrid;
 using MediaBrowser.Controller.Entities;
+using RecommendMe.Models;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -35,9 +37,22 @@ namespace RecommendMe.UI.History
         /// into grid rows. Date/sender/recipient/media-type narrowing is left
         /// entirely to DxDataGrid's own filter row on the client.
         /// </summary>
-        public static async Task<HistoryRow[]> BuildRowsAsync(User viewer)
+        public static async Task<HistoryRow[]> BuildRowsAsync(User viewer, bool isAdministrator)
         {
             var plugin = Plugin.Instance;
+            var all = await plugin.RecommendationStore.GetAllAsync().ConfigureAwait(false);
+
+            // Emby administrators have an explicit audit override: history
+            // privacy, plugin send scope, participant suspension, and the
+            // administrator's own RecommendMe suspension do not hide events.
+            if (isAdministrator)
+            {
+                plugin.Logger.Debug(
+                    "History - administrator override for viewer={0} ({1}), records visible={2}",
+                    viewer.Name, viewer.InternalId, all.Count);
+                return BuildRows(all);
+            }
+
             await plugin.PermissionService.EnsureUserAccessEntryAsync(viewer).ConfigureAwait(false);
             var adminSettings = await plugin.AdminSettingsStore.GetAsync().ConfigureAwait(false);
             var viewerEntry = adminSettings.UserAccess.First(u => u.UserId == viewer.InternalId);
@@ -48,8 +63,6 @@ namespace RecommendMe.UI.History
                     viewer.Name, viewer.InternalId);
                 return System.Array.Empty<HistoryRow>();
             }
-
-            var all = await plugin.RecommendationStore.GetAllAsync().ConfigureAwait(false);
 
             plugin.Logger.Debug(
                 "History - viewer={0} ({1}), total records={2}",
@@ -95,7 +108,12 @@ namespace RecommendMe.UI.History
                 "History - viewer={0}, records visible after privacy/visibility isolation={1}",
                 viewer.Name, visible.Count);
 
-            return visible
+            return BuildRows(visible);
+        }
+
+        private static HistoryRow[] BuildRows(IEnumerable<RecommendationRecord> records)
+        {
+            return records
                 .OrderByDescending(r => r.DateSentUtc)
                 .Select(r => new HistoryRow
                 {
