@@ -1,28 +1,54 @@
 # RecommendMe
 
-A standardized, automation-ready repository template for rapidly scaffolding Emby Server plugins. 
+RecommendMe is an Emby Server plugin that lets people recommend movies, television, music, and other supported library items to one another from inside Emby.
+
+Recommendations are added to a native Emby collection for the recipient, so they appear alongside the recipient's other library content. The plugin also keeps a history of who recommended each item, who received it, when it was sent, and whether the recommendation was private.
 
 ## Features
-* **Zero-Configuration Scaffolding**: Uses automated GitHub Actions to rename namespaces, solution files, and projects instantly upon repository creation.
-* **.gitignore prepopulated**: To ensure obj, bin and .vs folders are excluded from repository
-* **setup.bat**: instantiates a pre-commit in `.git/hooks/` so any commit with "[bump]" at the END of description increases the the version number in .csproj.
-* **Working Plugin with thumbnail**: Ready to compile plugin with thumbnail, pluginui configuration page with autopostback (autosave) and task.
-* **launchSettings.json**: Ready to launch Emby with breakpoints for debugging
-* **Post Build Event**: Ready to copy compiled code to Emby plugins folder in current users %appdata%.
-* **Supress dependency file**: No value in copying this into plugins folder.
 
-## How to Instantiate a New Plugin
+- Search the Emby library and recommend an item to another user.
+- Recommend an item to yourself for later viewing or listening.
+- Store recommendations in a dedicated native Emby collection for each recipient.
+- Browse recommendation history with sortable and filterable columns.
+- Mark recommendations as private so only the sender, recipient, and administrators can see them in history.
+- Notify recipients through their active Emby sessions when a recommendation arrives.
+- Prevent recommendations for items the recipient has already watched.
+- Automatically remove watched recommendations from the recipient's collection.
+- Reconcile watched recommendations through an optional Emby scheduled task.
 
-This template is completely automated via the cloud. You do not need to use `dotnet new` or run local renaming commands.
+## User controls
 
-1. Click the green **Use this template** button at the top of this GitHub page.
-2. Select **Create a new repository**.
-3. Name your repository using your new plugin's name (e.g., `MyNewPlugin`).
-4. Click **Create repository**.
+Each user can decide which permitted senders they want to receive recommendations from. They can block an individual sender entirely or opt out of particular media types from that sender.
 
-### What happens in the background:
-GitHub will instantly spin up a cloud action, read your repository name, and automatically update your folder paths, `.csproj`/`.slnx` filenames, and C# namespaces to match perfectly.
+User preferences can only narrow the permissions configured by an administrator; they cannot grant access that the administrator has not allowed.
 
-5. Open **GitHub Desktop** and clone your brand new repository down to your computer.
-6. Run \repositoryroot\setup.bat to instantiate the [bump] pre-commit hook.
-7. Launch the solution file inside `src/` and start coding immediately!
+## Administrator controls
+
+Administrators can:
+
+- Suspend all RecommendMe access for an individual user.
+- Choose whether a user can recommend to everyone, nobody, selected users, or members of shared groups.
+- Create groups and manage their membership.
+- Select a user's policy as the template applied when a new user is first encountered.
+- Choose which media types can be recommended server-wide.
+- Configure the prefix and suffix used for recommendation collection names.
+- Enable watched-item prevention and automatic watched-item removal.
+- Choose whether user and group lists are expanded or search-limited in the administration UI.
+
+Administrative pages and commands are protected by server-side administrator checks.
+
+## Recommendation history and privacy
+
+Senders and recipients can always see their own recommendation records while they have access to the plugin. Other users can only see non-private records when their current administrative scope includes both participants. Private records are restricted to their sender and recipient.
+
+Emby administrators have audit access to the complete recommendation history.
+
+## Data storage
+
+RecommendMe stores its settings and history as JSON beneath Emby's program-data directory:
+
+```text
+data/RecommendMe/
+```
+
+This includes administrator settings, user receiving preferences, recommendation history, and the registry of plugin-managed Emby collections. Writes use temporary files and backups to reduce the risk of losing an existing data file if a write is interrupted.
