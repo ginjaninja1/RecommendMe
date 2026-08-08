@@ -7,6 +7,7 @@ using Emby.Web.GenericEdit.Elements;
 using Emby.Web.GenericEdit.Elements.List;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Audio;
+using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
 using RecommendMe.Models;
 using RecommendMe.Services;
@@ -215,13 +216,19 @@ namespace RecommendMe.UI.Recommend
             if (item is Episode episode)
                 return $"S{episode.ParentIndexNumber.GetValueOrDefault():00}E{episode.IndexNumber.GetValueOrDefault():00} {episode.Name} - {episode.SeriesName}";
             if (item is MusicAlbum album)
-                return JoinNonEmpty(album.Name, string.Join(", ", album.AlbumArtists ?? System.Array.Empty<string>()));
+                return JoinNonEmpty(FormatWithYear(album.Name, album.ProductionYear), string.Join(", ", album.AlbumArtists ?? System.Array.Empty<string>()));
             if (item is Audio song)
                 return JoinNonEmpty(song.Name, string.Join(", ", song.Artists ?? System.Array.Empty<string>()), song.Album);
+            if (item is Movie movie)
+                return FormatWithYear(movie.Name, movie.ProductionYear);
+            if (item is Series series)
+                return FormatWithYear(series.Name, series.ProductionYear);
             return item.Name;
         }
 
         private static string JoinNonEmpty(params string[] values) => string.Join(" - ", values.Where(v => !string.IsNullOrWhiteSpace(v)));
+
+        private static string FormatWithYear(string name, int? year) => year.HasValue ? $"{name} ({year.Value})" : name;
 
         internal static IconNames GetIcon(string type)
         {
