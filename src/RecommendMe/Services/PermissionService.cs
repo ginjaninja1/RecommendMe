@@ -49,6 +49,17 @@ namespace RecommendMe.Services
         }
 
         /// <summary>
+        /// Whether the administrator has suspended all RecommendMe access for
+        /// this user. User-facing pages use this as their common page and
+        /// command boundary; domain operations still enforce their own rules.
+        /// </summary>
+        public async Task<bool> IsAccessSuspendedAsync(User user)
+        {
+            var entry = await this.EnsureUserAccessEntryAsync(user).ConfigureAwait(false);
+            return entry.AccessSuspended;
+        }
+
+        /// <summary>
         /// Ensures a UserAccessEntry exists for this user, copying the selected
         /// default user's send policy and groups on first sight. Existing users
         /// that opt into new recipients also receive the new id in their stored

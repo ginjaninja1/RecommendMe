@@ -45,7 +45,7 @@ namespace RecommendMe.UI.Admin
             {
                 PrimaryText = "Apply Collection Naming",
                 SecondaryText = "Updates existing plugin-owned collections without creating collections for other users.",
-                Icon = IconNames.save,
+                Icon = IconNames.drive_file_rename_outline,
                 Status = ItemStatus.Succeeded,
                 Button1 = new ButtonItem("Apply Collection Naming") { CommandId = CollectionSettingsCommands.Apply }
             }

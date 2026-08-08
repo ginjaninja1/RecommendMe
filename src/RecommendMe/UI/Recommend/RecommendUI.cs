@@ -75,15 +75,5 @@ namespace RecommendMe.UI.Recommend
 
         public GenericItemList StatusMessage { get; set; } = new GenericItemList();
 
-        public GenericItemList HistoryLink { get; set; } = new GenericItemList
-        {
-            new GenericListItem
-            {
-                PrimaryText = "View Recommendation History",
-                Icon = IconNames.link,
-                Status = ItemStatus.Succeeded,
-                Button1 = new ButtonItem("Open") { CommandId = RecommendCommands.OpenHistory }
-            }
-        };
     }
 }

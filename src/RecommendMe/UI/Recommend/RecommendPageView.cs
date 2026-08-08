@@ -8,7 +8,6 @@ using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Plugins.UI.Views;
 using MediaBrowser.Model.Serialization;
 using RecommendMe.Services;
-using RecommendMe.UI.History;
 using RecommendMe.UIBaseClasses.Views;
 
 namespace RecommendMe.UI.Recommend
@@ -21,7 +20,6 @@ namespace RecommendMe.UI.Recommend
     /// </summary>
     internal class RecommendPageView : PluginPageView
     {
-        private readonly IServerApplicationHost applicationHost;
         private readonly IJsonSerializer jsonSerializer;
         private readonly MediaSearchService searchService;
         private readonly ILogger logger;
@@ -29,7 +27,6 @@ namespace RecommendMe.UI.Recommend
         public RecommendPageView(PluginInfo pluginInfo, IServerApplicationHost applicationHost, ILogger logger)
             : base(pluginInfo.Id)
         {
-            this.applicationHost = applicationHost;
             this.logger = logger;
             this.jsonSerializer = applicationHost.Resolve<IJsonSerializer>();
             this.searchService = new MediaSearchService(Plugin.Instance.LibraryManager, this.logger);
@@ -64,6 +61,12 @@ namespace RecommendMe.UI.Recommend
                     var user = Plugin.Instance.UserManager.GetUserById(value.Id);
                     if (user != null)
                     {
+                        if (Plugin.Instance.PermissionService.IsAccessSuspendedAsync(user).GetAwaiter().GetResult())
+                        {
+                            this.ContentData = new SuspendedUI();
+                            return;
+                        }
+
                         var ui = (RecommendUI)this.ContentData;
                         ui.TargetUserChoices = RecommendViewBuilder.BuildTargetUserChoicesAsync(user).GetAwaiter().GetResult();
                         var allowedTypes = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult().GloballyAllowedMediaTypes;
@@ -80,7 +83,28 @@ namespace RecommendMe.UI.Recommend
 
         public override Task<IPluginUIView> RunCommand(string itemId, string commandId, string data)
         {
-            var ui = (RecommendUI)this.ContentData;
+            var currentUser = this.CurrentUser;
+
+            if (currentUser == null)
+            {
+                var unavailableUi = this.ContentData as RecommendUI ?? new RecommendUI();
+                unavailableUi.StatusMessage = RecommendViewBuilder.BuildStatusMessage("Could not identify the current user - please reload the page.", false);
+                this.ContentData = unavailableUi;
+                return Task.FromResult<IPluginUIView>(this);
+            }
+
+            // Check every postback as well as initial page rendering. This
+            // prevents stale or forged commands from searching, expanding
+            // results, or attempting a recommendation.
+            if (Plugin.Instance.PermissionService.IsAccessSuspendedAsync(currentUser).GetAwaiter().GetResult())
+            {
+                this.ContentData = new SuspendedUI();
+                this.RaiseUIViewInfoChanged();
+                return Task.FromResult<IPluginUIView>(this);
+            }
+
+            var ui = this.ContentData as RecommendUI ?? new RecommendUI();
+            this.ContentData = ui;
 
             // Mirrors the established pattern in this codebase (see the admin
             // ConfigPageView's HandleSave): explicitly deserialize the posted
@@ -98,20 +122,6 @@ namespace RecommendMe.UI.Recommend
                     ui.SelectedTargetUserName = incoming.SelectedTargetUserName;
                     ui.IsPrivate = incoming.IsPrivate;
                 }
-            }
-
-            var currentUser = this.CurrentUser;
-
-            if (currentUser == null)
-            {
-                ui.StatusMessage = RecommendViewBuilder.BuildStatusMessage("Could not identify the current user - please reload the page.", false);
-                return Task.FromResult<IPluginUIView>(this);
-            }
-
-            if (commandId == RecommendCommands.OpenHistory)
-            {
-                IPluginUIView dialog = new HistoryDialogView(this.PluginId, currentUser, this.applicationHost);
-                return Task.FromResult(dialog);
             }
 
             if (commandId == RecommendCommands.Search)

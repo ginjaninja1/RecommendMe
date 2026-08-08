@@ -49,7 +49,9 @@ namespace RecommendMe.UI.Account
                     var user = Plugin.Instance.UserManager.GetUserById(value.Id);
                     if (user != null)
                     {
-                        this.ContentData = AccountViewBuilder.BuildAsync(user).GetAwaiter().GetResult();
+                        this.ContentData = Plugin.Instance.PermissionService.IsAccessSuspendedAsync(user).GetAwaiter().GetResult()
+                            ? (MediaBrowser.Model.GenericEdit.IEditableObject)new SuspendedUI()
+                            : AccountViewBuilder.BuildAsync(user).GetAwaiter().GetResult();
                     }
                 }
             }
@@ -63,6 +65,15 @@ namespace RecommendMe.UI.Account
             var currentUser = this.CurrentUser;
             if (currentUser == null)
             {
+                return Task.FromResult<IPluginUIView>(this);
+            }
+
+            // The rendered controls are not the security boundary: reject
+            // stale or forged preference commands before touching the store.
+            if (Plugin.Instance.PermissionService.IsAccessSuspendedAsync(currentUser).GetAwaiter().GetResult())
+            {
+                this.ContentData = new SuspendedUI();
+                this.RaiseUIViewInfoChanged();
                 return Task.FromResult<IPluginUIView>(this);
             }
 

@@ -13,8 +13,6 @@ namespace RecommendMe.UI.Recommend
 
         public const string UpdateFormState = "updateformstate";
 
-        public const string OpenHistory = "openhistory";
-
         private const string SendPrefix = "send:";
         private const string ExpandPrefix = "expand:";
 

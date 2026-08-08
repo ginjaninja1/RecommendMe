@@ -8,11 +8,12 @@
     using MediaBrowser.Model.Plugins.UI;
     using MediaBrowser.Model.Plugins.UI.Views;
     using RecommendMe.UI.Account;
+    using RecommendMe.UI.History;
     using RecommendMe.UI.Recommend;
     using RecommendMe.UIBaseClasses;
 
     /// <summary>
-    /// Ordinary-user entry point: Recommend (default) and Account tabs.
+    /// Ordinary-user entry point: Recommend (default), History, and Account tabs.
     /// EnableInUserMenu = true puts this in every user's own menu, separate
     /// from the admin-only <see cref="AdminPageController"/> entry. Neither
     /// tab is admin-gated - see AdminPageController for the admin-only page.
@@ -43,6 +44,11 @@
 
             this.tabPages = new List<IPluginUIPageController>
             {
+                new TabPageController(
+                    pluginInfo,
+                    "RecommendMeHistory",
+                    "History",
+                    info => new HistoryPageView(info, this.applicationHost)),
                 new TabPageController(
                     pluginInfo,
                     "RecommendMeAccount",

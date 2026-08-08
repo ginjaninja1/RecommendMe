@@ -38,10 +38,18 @@ namespace RecommendMe.UI.History
         public static async Task<HistoryRow[]> BuildRowsAsync(User viewer)
         {
             var plugin = Plugin.Instance;
-            var all = await plugin.RecommendationStore.GetAllAsync().ConfigureAwait(false);
             await plugin.PermissionService.EnsureUserAccessEntryAsync(viewer).ConfigureAwait(false);
             var adminSettings = await plugin.AdminSettingsStore.GetAsync().ConfigureAwait(false);
             var viewerEntry = adminSettings.UserAccess.First(u => u.UserId == viewer.InternalId);
+            if (viewerEntry.AccessSuspended)
+            {
+                plugin.Logger.Debug(
+                    "History access blocked for suspended viewer {0} ({1}).",
+                    viewer.Name, viewer.InternalId);
+                return System.Array.Empty<HistoryRow>();
+            }
+
+            var all = await plugin.RecommendationStore.GetAllAsync().ConfigureAwait(false);
 
             plugin.Logger.Debug(
                 "History - viewer={0} ({1}), total records={2}",
@@ -67,8 +75,7 @@ namespace RecommendMe.UI.History
                 {
                     var senderEntry = adminSettings.UserAccess.FirstOrDefault(u => u.UserId == r.SentByUserId);
                     var recipientEntry = adminSettings.UserAccess.FirstOrDefault(u => u.UserId == r.SentToUserId);
-                    var bothPartiesAreVisible = !viewerEntry.AccessSuspended
-                        && senderEntry != null
+                    var bothPartiesAreVisible = senderEntry != null
                         && !senderEntry.AccessSuspended
                         && recipientEntry != null
                         && !recipientEntry.AccessSuspended

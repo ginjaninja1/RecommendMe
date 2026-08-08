@@ -75,6 +75,12 @@ namespace RecommendMe.UI.Recommend
         {
             var plugin = Plugin.Instance;
 
+            var currentUserEntry = await plugin.PermissionService.EnsureUserAccessEntryAsync(currentUser).ConfigureAwait(false);
+            if (currentUserEntry.AccessSuspended)
+            {
+                return new List<EditorSelectOption>();
+            }
+
             // Value is always the raw, unmodified username - ResolveTargetUser
             // matches on this. Only the display Name gets the "(yourself)"
             // decoration, so there's no fragile string-suffix matching.
@@ -89,13 +95,7 @@ namespace RecommendMe.UI.Recommend
                 await plugin.PermissionService.EnsureUserAccessEntryAsync(user).ConfigureAwait(false);
             }
 
-            var currentUserEntry = await plugin.PermissionService.EnsureUserAccessEntryAsync(currentUser).ConfigureAwait(false);
             var settings = await plugin.AdminSettingsStore.GetAsync().ConfigureAwait(false);
-            if (currentUserEntry.AccessSuspended)
-            {
-                // Suspended users can still recommend to themselves, but not to anyone else.
-                return choices;
-            }
 
             foreach (var candidate in allUsers)
             {
