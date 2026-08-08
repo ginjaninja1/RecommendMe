@@ -50,5 +50,30 @@ namespace RecommendMe.UI.Admin
                 Button1 = new ButtonItem("Apply Collection Naming") { CommandId = CollectionSettingsCommands.Apply }
             }
         };
+        public GenericItemList ForumLink { get; set; } = new GenericItemList
+        {
+            new GenericListItem
+            {
+                PrimaryText = "Community Forum",
+                SecondaryText = "Issues, Suggestions and Updates",
+                Icon = IconNames.link,
+                Status = ItemStatus.Succeeded,
+                HyperLink = "https://emby.media/community/topic/149044-ginjaninja-tools-recommendme-intra-user-recommendation-ecosystem-with-user-notifications/",
+                HyperLinkTargetExternal = true
+            }
+        };
+
+        public GenericItemList GithubLink { get; set; } = new GenericItemList
+        {
+            new GenericListItem
+            {
+                PrimaryText = "Github repository",
+                SecondaryText = "",
+                Icon = IconNames.link,
+                Status = ItemStatus.Succeeded,
+                HyperLink = "https://github.com/ginjaninja1/RecommendMe",
+                HyperLinkTargetExternal = true
+            }
+        };
     }
 }
