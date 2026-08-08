@@ -12,7 +12,7 @@ namespace RecommendMe.Tasks
         public string Name => "RecommendMe - Clear watched recommendations";
         public string Key => "RecommendMeClearWatchedRecommendations";
         public string Description => "Removes watched items from plugin-controlled recommendation collections when the corresponding admin setting is enabled.";
-        public string Category => "Ginjaninja Tools";
+        public string Category => "GinjaNinja Tools";
 
         public IEnumerable<TaskTriggerInfo> GetDefaultTriggers() => Array.Empty<TaskTriggerInfo>();
 
