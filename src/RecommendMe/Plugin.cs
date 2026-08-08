@@ -136,8 +136,8 @@ namespace RecommendMe
             "Lets users recommend movies, shows, and music to each other via native Emby Collections.";
 
         public override Guid Id =>
-            new Guid("1E0C5960-DF19-4C22-AF9A-FA0FDC3EF649");
-
+            new Guid("6ACFD085-1E3B-45FC-8674-30121DC0AF79");
+        
         public override string Name =>
             "RecommendMe";
 
