@@ -21,6 +21,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="Tasks\SessionDiagnosticProbeTask.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="MediaBrowser.Server.Core" Version="4.9.1.90" />
     <PackageReference Include="System.Memory" Version="4.6.0" />
   </ItemGroup>
@@ -32,9 +36,6 @@
   </ItemGroup>
 
   <Target Name="DeployPluginToEmby" AfterTargets="Build" Condition="'$(DeployPlugin)' == 'true'">
-    <Copy
-      SourceFiles="$(TargetPath)"
-      DestinationFolder="$(APPDATA)\Emby-Server\programdata\plugins"
-      SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(APPDATA)\Emby-Server\programdata\plugins" SkipUnchangedFiles="true" />
   </Target>
 </Project>

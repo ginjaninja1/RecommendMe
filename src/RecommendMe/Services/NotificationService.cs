@@ -15,17 +15,15 @@ namespace RecommendMe.Services
     /// <summary>
     /// Sends recommendation notifications to whichever of the recipient's
     /// sessions are currently online. If none are online, the notification
-    /// is queued to disk and delivered from a SessionStarted handler once
+    /// is queued to disk and delivered from a SessionActivity handler once
     /// the recipient reconnects.
     ///
     /// There is no delivery-receipt concept anywhere in the Emby session
     /// API - SendMessageCommand is fire-and-forget. "Online" here means
-    /// "present in ISessionManager.Sessions for this user", which is the
-    /// same signal the pre-queueing version of this class used; SessionInfo
-    /// also exposes an IsActive property but that reflects whether a
-    /// session's ISessionController(s) report themselves active (used for
-    /// remote-control support), not whether the user is connected, so it is
-    /// deliberately not used here.
+    /// "present in ISessionManager.Sessions for this user AND IsActive",
+    /// confirmed via SessionDiagnosticsProbeTask: a disconnected client can
+    /// leave a stale SessionInfo entry behind with IsActive=false, so
+    /// presence alone over-counts recipients as online.
     /// </summary>
     internal class NotificationService
     {
@@ -60,7 +58,7 @@ namespace RecommendMe.Services
                 }
 
                 this.shutdownTokenSource = new CancellationTokenSource();
-                this.sessionManager.SessionStarted += this.OnSessionStarted;
+                this.sessionManager.SessionActivity += this.OnSessionActivity;
                 this.isRunning = true;
             }
         }
@@ -81,7 +79,7 @@ namespace RecommendMe.Services
                     return;
                 }
 
-                this.sessionManager.SessionStarted -= this.OnSessionStarted;
+                this.sessionManager.SessionActivity -= this.OnSessionActivity;
                 this.shutdownTokenSource.Cancel();
                 this.shutdownTokenSource.Dispose();
                 this.isRunning = false;
@@ -99,9 +97,10 @@ namespace RecommendMe.Services
 
             if (recipientSessions.Length == 0)
             {
-                this.logger.Debug(
-                    "Recipient {0} has no active sessions; queuing notification for item '{1}'.",
+                this.logger.Info(
+                    "Recipient {0} (user {1}) has no active sessions; queuing notification for item '{2}'.",
                     recipient.Name,
+                    recipient.InternalId,
                     itemName);
 
                 await this.pendingNotificationStore.AddAsync(new PendingNotificationRecord
@@ -114,6 +113,13 @@ namespace RecommendMe.Services
                 return;
             }
 
+            this.logger.Info(
+                "Recipient {0} (user {1}) is online across {2} session(s); sending notification for item '{3}' now.",
+                recipient.Name,
+                recipient.InternalId,
+                recipientSessions.Length,
+                itemName);
+
             await this.SendToSessionsAsync(recipientSessions, text).ConfigureAwait(false);
         }
 
@@ -124,8 +130,16 @@ namespace RecommendMe.Services
 
         private SessionInfo[] GetOnlineSessions(long userInternalId)
         {
+            // Presence in Sessions alone isn't reliable: a session can
+            // linger there with IsActive=false after its client disconnects
+            // without a clean close (confirmed via SessionDiagnosticsProbeTask -
+            // a user had two Sessions entries for the same login, one
+            // IsActive=true for the live tab and one IsActive=false and
+            // stale for an old one). IsActive reflects whether the
+            // session's own ISessionController(s) report it live, which is
+            // the actual "is anyone there" signal.
             return this.sessionManager.Sessions
-                .Where(session => session.UserInternalId == userInternalId)
+                .Where(session => session.UserInternalId == userInternalId && session.IsActive)
                 .ToArray();
         }
 
@@ -159,13 +173,27 @@ namespace RecommendMe.Services
         }
 
         /// <summary>
-        /// Fires for every new session for every user. usersWithDeliveryInFlight
-        /// guards against a user reconnecting twice within the 20s delay
-        /// window starting two overlapping deliveries that would both see,
-        /// and both try to clear, the same queued records.
+        /// Fires on session activity for every user, not just ones with
+        /// pending notifications - filtered immediately below. SessionActivity
+        /// (rather than SessionStarted) is the trigger because SessionStarted
+        /// only fires the first time a given (app, deviceId) pair ever
+        /// connects; a returning web user reusing the same browser reuses
+        /// the existing SessionInfo entry and never re-fires it.
+        /// usersWithDeliveryInFlight guards against overlapping activity
+        /// events within the 20s delay window starting two overlapping
+        /// deliveries that would both see, and both try to clear, the same
+        /// queued records.
         /// </summary>
-        private void OnSessionStarted(object sender, SessionEventArgs e)
+        private void OnSessionActivity(object sender, SessionEventArgs e)
         {
+            this.logger.Info(
+                "SessionActivity fired: SessionId={0}, UserId={1}, UserName={2}, Client={3}, IsActive={4}",
+                e?.SessionInfo?.Id,
+                e?.SessionInfo?.UserInternalId,
+                e?.SessionInfo?.UserName,
+                e?.SessionInfo?.Client,
+                e?.SessionInfo?.IsActive);
+
             var userInternalId = e?.SessionInfo?.UserInternalId ?? 0;
             if (userInternalId == 0)
             {
@@ -190,7 +218,7 @@ namespace RecommendMe.Services
         /// Waits <see cref="DeliveryDelay"/> then re-checks presence rather
         /// than assuming it, since a session can start and end within that
         /// window. If the recipient is offline at the recheck, the
-        /// notification(s) are left queued for the next SessionStarted
+        /// notification(s) are left queued for the next SessionActivity
         /// event - there is no delivery receipt to justify a retry loop.
         /// </summary>
         private async Task DeliverQueuedNotificationsAsync(long recipientUserId, CancellationToken cancellationToken)
@@ -203,13 +231,19 @@ namespace RecommendMe.Services
                     return;
                 }
 
+                this.logger.Info(
+                    "SessionActivity detected for user {0} with {1} queued notification(s); waiting {2}s before delivery check.",
+                    recipientUserId,
+                    pending.Count,
+                    DeliveryDelay.TotalSeconds);
+
                 await Task.Delay(DeliveryDelay, cancellationToken).ConfigureAwait(false);
 
                 var recipientSessions = this.GetOnlineSessions(recipientUserId);
                 if (recipientSessions.Length == 0)
                 {
-                    this.logger.Debug(
-                        "Recipient {0} went offline again before the queued-notification delay elapsed; leaving {1} notification(s) queued.",
+                    this.logger.Info(
+                        "User {0} not online at delivery check - {1} notification(s) remain queued.",
                         recipientUserId,
                         pending.Count);
                     return;
@@ -223,6 +257,11 @@ namespace RecommendMe.Services
                 await this.pendingNotificationStore
                     .RemoveAsync(recipientUserId, pending.Select(record => record.NotificationId))
                     .ConfigureAwait(false);
+
+                this.logger.Info(
+                    "User {0} online - sent {1} queued recommendation notification(s).",
+                    recipientUserId,
+                    pending.Count);
             }
             catch (OperationCanceledException)
             {
