@@ -3,6 +3,7 @@ using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Collections;
+using MediaBrowser.Controller.Drawing;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Plugins;
@@ -58,20 +59,45 @@ namespace RecommendMe
             this.RecommendationStore = new RecommendationStore(appPaths, fileSystem, jsonSerializer, this.logger);
             this.UserPreferenceStore = new UserPreferenceStore(appPaths, fileSystem, jsonSerializer, this.logger);
             this.CollectionRegistryStore = new CollectionRegistryStore(appPaths, fileSystem, jsonSerializer, this.logger);
+            this.CollectionCollageStore = new CollectionCollageStore(appPaths, fileSystem, jsonSerializer, this.logger);
 
             // --- Service layer ---------------------------------------------------
             this.UserManager = applicationHost.Resolve<IUserManager>();
             this.LibraryManager = applicationHost.Resolve<ILibraryManager>();
             this.userDataManager = applicationHost.Resolve<IUserDataManager>();
+            var collectionManager = applicationHost.Resolve<ICollectionManager>();
 
             this.PermissionService = new PermissionService(this.AdminSettingsStore, this.UserPreferenceStore);
 
             this.CollectionSyncService = new CollectionSyncService(
-                applicationHost.Resolve<ICollectionManager>(),
+                collectionManager,
                 this.LibraryManager,
                 this.UserManager,
                 this.CollectionRegistryStore,
                 this.AdminSettingsStore,
+                this.logger);
+
+            var collectionCollageBuilder = new CollectionCollageBuilder(
+                this.LibraryManager,
+                applicationHost.Resolve<IImageProcessor>(),
+                appPaths,
+                this.CollectionCollageStore,
+                this.logger);
+
+            this.CollectionCollageCoordinator = new CollectionCollageCoordinator(
+                collectionCollageBuilder,
+                this.logger);
+
+            // Self-contained: subscribes directly to ICollectionManager's own
+            // ItemsAddedToCollection/ItemsRemovedFromCollection events, so it
+            // captures every membership change to a managed collection -
+            // including admin manual edits via the Emby UI, not just changes
+            // made through CollectionSyncService. See CollectionCollageEventListener.
+            this.CollectionCollageEventListener = new CollectionCollageEventListener(
+                collectionManager,
+                this.CollectionRegistryStore,
+                this.CollectionCollageStore,
+                this.CollectionCollageCoordinator,
                 this.logger);
 
             this.NotificationService = new NotificationService(
@@ -107,7 +133,13 @@ namespace RecommendMe
 
         internal CollectionRegistryStore CollectionRegistryStore { get; }
 
+        internal CollectionCollageStore CollectionCollageStore { get; }
+
         internal PermissionService PermissionService { get; }
+
+        internal CollectionCollageCoordinator CollectionCollageCoordinator { get; }
+
+        internal CollectionCollageEventListener CollectionCollageEventListener { get; }
 
         internal CollectionSyncService CollectionSyncService { get; }
 
@@ -137,7 +169,7 @@ namespace RecommendMe
 
         public override Guid Id =>
             new Guid("6ACFD085-1E3B-45FC-8674-30121DC0AF79");
-        
+
         public override string Name =>
             "RecommendMe";
 
@@ -191,6 +223,7 @@ namespace RecommendMe
                 }
 
                 this.userDataManager.UserDataSaved += this.OnUserDataSaved;
+                this.CollectionCollageEventListener.Start();
                 this.isRunning = true;
             }
         }
@@ -222,6 +255,9 @@ namespace RecommendMe
                 tasks = new Task[this.backgroundTasks.Count];
                 this.backgroundTasks.CopyTo(tasks);
             }
+
+            this.CollectionCollageEventListener.Dispose();
+            this.CollectionCollageCoordinator.Dispose();
 
             if (tasks.Length > 0)
             {

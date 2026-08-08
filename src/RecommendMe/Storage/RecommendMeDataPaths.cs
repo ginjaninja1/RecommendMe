@@ -27,5 +27,11 @@ namespace RecommendMe.Storage
 
         public static string CollectionRegistryFile(IApplicationPaths applicationPaths) =>
             Path.Combine(GetDataDirectory(applicationPaths), "collection-registry.json");
+
+        public static string CollectionCollagesFile(IApplicationPaths applicationPaths) =>
+            Path.Combine(GetDataDirectory(applicationPaths), "collection-collages.json");
+
+        public static string CollectionCollageImagesDirectory(IApplicationPaths applicationPaths) =>
+            Path.Combine(GetDataDirectory(applicationPaths), "collection-collage-images");
     }
 }
