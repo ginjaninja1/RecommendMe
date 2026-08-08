@@ -33,5 +33,8 @@ namespace RecommendMe.Storage
 
         public static string CollectionCollageImagesDirectory(IApplicationPaths applicationPaths) =>
             Path.Combine(GetDataDirectory(applicationPaths), "collection-collage-images");
+
+        public static string PendingNotificationsFile(IApplicationPaths applicationPaths) =>
+            Path.Combine(GetDataDirectory(applicationPaths), "pending-notifications.json");
     }
 }

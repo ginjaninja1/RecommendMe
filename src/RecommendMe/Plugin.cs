@@ -60,6 +60,7 @@ namespace RecommendMe
             this.UserPreferenceStore = new UserPreferenceStore(appPaths, fileSystem, jsonSerializer, this.logger);
             this.CollectionRegistryStore = new CollectionRegistryStore(appPaths, fileSystem, jsonSerializer, this.logger);
             this.CollectionCollageStore = new CollectionCollageStore(appPaths, fileSystem, jsonSerializer, this.logger);
+            this.PendingNotificationStore = new PendingNotificationStore(appPaths, fileSystem, jsonSerializer, this.logger);
 
             // --- Service layer ---------------------------------------------------
             this.UserManager = applicationHost.Resolve<IUserManager>();
@@ -100,8 +101,11 @@ namespace RecommendMe
                 this.CollectionCollageCoordinator,
                 this.logger);
 
+            this.SessionManager = applicationHost.Resolve<ISessionManager>();
+
             this.NotificationService = new NotificationService(
-                applicationHost.Resolve<ISessionManager>(),
+                this.SessionManager,
+                this.PendingNotificationStore,
                 this.logger);
 
             this.RecommendationService = new RecommendationService(
@@ -135,6 +139,8 @@ namespace RecommendMe
 
         internal CollectionCollageStore CollectionCollageStore { get; }
 
+        internal PendingNotificationStore PendingNotificationStore { get; }
+
         internal PermissionService PermissionService { get; }
 
         internal CollectionCollageCoordinator CollectionCollageCoordinator { get; }
@@ -150,6 +156,8 @@ namespace RecommendMe
         internal IUserManager UserManager { get; }
 
         internal ILibraryManager LibraryManager { get; }
+
+        internal ISessionManager SessionManager { get; }
 
         /// <summary>Exposed for UI-layer code (e.g. HistoryViewBuilder) that isn't DI-constructed and has no other route to the plugin's logger.</summary>
         internal ILogger Logger => this.logger;
@@ -224,6 +232,7 @@ namespace RecommendMe
 
                 this.userDataManager.UserDataSaved += this.OnUserDataSaved;
                 this.CollectionCollageEventListener.Start();
+                this.NotificationService.Start();
                 this.isRunning = true;
             }
         }
@@ -258,6 +267,7 @@ namespace RecommendMe
 
             this.CollectionCollageEventListener.Dispose();
             this.CollectionCollageCoordinator.Dispose();
+            this.NotificationService.Dispose();
 
             if (tasks.Length > 0)
             {
