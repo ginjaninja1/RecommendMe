@@ -219,6 +219,7 @@ namespace RecommendMe.UI.Recommend
                     RecommendationSendResult.RecipientOptedOutMediaType => ($"{targetUser.Name} is not accepting {mediaType} recommendations from you.", false),
                     RecommendationSendResult.AlreadyWatchedByRecipient => ($"{targetUser.Name} has already watched this.", false),
                     RecommendationSendResult.AlreadyInRecipientCollection => ($"{targetUser.Name} already has this in their recommendation collection.", false),
+                    RecommendationSendResult.RecipientCannotAccessItem => ($"{targetUser.Name} doesn't have access to this item.", false),
                     _ => ("Something went wrong.", false)
                 };
                 RecommendViewBuilder.TrySetRecommendationStatus(ui.SearchResults, itemId, status.Item1, status.Item2);

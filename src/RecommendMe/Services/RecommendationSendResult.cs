@@ -7,6 +7,7 @@ namespace RecommendMe.Services
         RecipientBlockedSender,
         RecipientOptedOutMediaType,
         AlreadyWatchedByRecipient,
-        AlreadyInRecipientCollection
+        AlreadyInRecipientCollection,
+        RecipientCannotAccessItem
     }
 }

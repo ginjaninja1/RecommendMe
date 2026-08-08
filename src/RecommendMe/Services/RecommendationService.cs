@@ -67,9 +67,12 @@ namespace RecommendMe.Services
         /// resolved the log's Active status in that case:
         ///   1. Recipient's own preferences currently accept recommendations
         ///      from this sender, for this media type (PermissionService).
-        ///   2. The item is not currently in the recipient's recommendation
+        ///   2. The item is visible to the recipient per Emby's own access
+        ///      rules (parental rating, blocked tags, folder/library access) -
+        ///      via BaseItem.IsVisible(User), never reimplemented manually.
+        ///   3. The item is not currently in the recipient's recommendation
         ///      collection, checked live (CollectionSyncService).
-        ///   3. When enabled by the admin, the item is not already marked
+        ///   4. When enabled by the admin, the item is not already marked
         ///      watched for the recipient.
         /// </summary>
         public async Task<RecommendationSendResult> SendRecommendationAsync(
@@ -99,6 +102,15 @@ namespace RecommendMe.Services
                         return RecommendationSendResult.RecipientBlockedSender;
                     case SendPermissionResult.RecipientOptedOutMediaType:
                         return RecommendationSendResult.RecipientOptedOutMediaType;
+                }
+
+                if (!item.IsVisible(recipient))
+                {
+                    this.logger.Debug(
+                        "Blocked - item {0} is not visible to recipient {1} (parental rating, blocked tags, or folder access).",
+                        item.InternalId,
+                        recipient.Name);
+                    return RecommendationSendResult.RecipientCannotAccessItem;
                 }
 
                 var settings = await this.adminSettingsStore.GetAsync().ConfigureAwait(false);
