@@ -9,3 +9,5 @@
 
 # Visual Studio cache folders
 **/.vs/
+
+*.csproj.user
