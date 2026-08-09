@@ -61,6 +61,7 @@ namespace RecommendMe
             this.CollectionRegistryStore = new CollectionRegistryStore(appPaths, fileSystem, jsonSerializer, this.logger);
             this.CollectionCollageStore = new CollectionCollageStore(appPaths, fileSystem, jsonSerializer, this.logger);
             this.PendingNotificationStore = new PendingNotificationStore(appPaths, fileSystem, jsonSerializer, this.logger);
+            this.PendingCollectionAddCache = new PendingCollectionAddCache();
 
             // --- Service layer ---------------------------------------------------
             this.UserManager = applicationHost.Resolve<IUserManager>();
@@ -76,6 +77,7 @@ namespace RecommendMe
                 this.UserManager,
                 this.CollectionRegistryStore,
                 this.AdminSettingsStore,
+                this.PendingCollectionAddCache,
                 this.logger);
 
             var collectionCollageBuilder = new CollectionCollageBuilder(
@@ -89,23 +91,31 @@ namespace RecommendMe
                 collectionCollageBuilder,
                 this.logger);
 
-            // Self-contained: subscribes directly to ICollectionManager's own
-            // ItemsAddedToCollection/ItemsRemovedFromCollection events, so it
-            // captures every membership change to a managed collection -
-            // including admin manual edits via the Emby UI, not just changes
-            // made through CollectionSyncService. See CollectionCollageEventListener.
-            this.CollectionCollageEventListener = new CollectionCollageEventListener(
-                collectionManager,
-                this.CollectionRegistryStore,
-                this.CollectionCollageStore,
-                this.CollectionCollageCoordinator,
-                this.logger);
-
             this.SessionManager = applicationHost.Resolve<ISessionManager>();
 
             this.NotificationService = new NotificationService(
                 this.SessionManager,
                 this.PendingNotificationStore,
+                this.logger);
+
+            // Self-contained: subscribes directly to ICollectionManager's own
+            // ItemsAddedToCollection/ItemsRemovedFromCollection events, so it
+            // captures every membership change to a managed collection -
+            // including admin manual edits via the Emby UI, not just changes
+            // made through CollectionSyncService. Adds that didn't originate
+            // from CollectionSyncService.AddItemAsync (per
+            // PendingCollectionAddCache) are recorded as System
+            // recommendations and notified. See CollectionCollageEventListener.
+            this.CollectionCollageEventListener = new CollectionCollageEventListener(
+                collectionManager,
+                this.CollectionRegistryStore,
+                this.CollectionCollageStore,
+                this.CollectionCollageCoordinator,
+                this.PendingCollectionAddCache,
+                this.RecommendationStore,
+                this.NotificationService,
+                this.UserManager,
+                this.LibraryManager,
                 this.logger);
 
             this.RecommendationService = new RecommendationService(
@@ -140,6 +150,8 @@ namespace RecommendMe
         internal CollectionCollageStore CollectionCollageStore { get; }
 
         internal PendingNotificationStore PendingNotificationStore { get; }
+
+        internal PendingCollectionAddCache PendingCollectionAddCache { get; }
 
         internal PermissionService PermissionService { get; }
 

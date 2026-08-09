@@ -71,30 +71,51 @@ namespace RecommendMe.Services
                     CollectionIds = new[] { collectionId }
                 }));
 
-            var top4Ids = recentIds.Where(liveMemberIds.Contains).Take(4).ToList();
-            if (top4Ids.Count == 0)
+            var candidateIds = recentIds.Where(liveMemberIds.Contains).ToList();
+            if (candidateIds.Count == 0)
             {
                 this.logger.Debug("CollectionCollage: skipped '{0}' - tracked members no longer in collection.", collection.Name);
+                return;
+            }
+
+            // Walk the full tracked-recency list (not just the newest 4) so a
+            // member without a Primary image doesn't starve the collage -
+            // skip over it and keep going until 4 image-bearing members are
+            // found or the tracked list is exhausted.
+            var top4Ids = new System.Collections.Generic.List<long>();
+            var localPaths = new System.Collections.Generic.List<string>();
+            foreach (var id in candidateIds)
+            {
+                var member = this.libraryManager.GetItemById(id);
+                if (member == null)
+                {
+                    continue;
+                }
+
+                var path = member.GetImagePath(ImageType.Primary, 0);
+                if (string.IsNullOrEmpty(path) || !File.Exists(path))
+                {
+                    continue;
+                }
+
+                top4Ids.Add(id);
+                localPaths.Add(path);
+                if (top4Ids.Count == 4)
+                {
+                    break;
+                }
+            }
+
+            if (localPaths.Count == 0)
+            {
+                this.logger.Warn("CollectionCollage: skipped '{0}' - none of the {1} tracked member(s) have a Primary image.", collection.Name, candidateIds.Count);
                 return;
             }
 
             var lastBuiltIds = await this.collageStore.GetLastBuiltItemIdsAsync(collectionId).ConfigureAwait(false);
             if (collection.HasImage(ImageType.Primary, 0) && top4Ids.SequenceEqual(lastBuiltIds))
             {
-                this.logger.Debug("CollectionCollage: skipped '{0}' - top-4 set unchanged since last build.", collection.Name);
-                return;
-            }
-
-            var localPaths = top4Ids
-                .Select(id => this.libraryManager.GetItemById(id))
-                .Where(item => item != null)
-                .Select(item => item.GetImagePath(ImageType.Primary, 0))
-                .Where(path => !string.IsNullOrEmpty(path) && File.Exists(path))
-                .ToArray();
-
-            if (localPaths.Length == 0)
-            {
-                this.logger.Warn("CollectionCollage: skipped '{0}' - none of the top-{1} member(s) have a Primary image.", collection.Name, top4Ids.Count);
+                this.logger.Debug("CollectionCollage: skipped '{0}' - image-bearing set unchanged since last build.", collection.Name);
                 return;
             }
 
@@ -145,7 +166,7 @@ namespace RecommendMe.Services
 
                 this.libraryManager.UpdateImages(collection);
 
-                this.logger.Info("CollectionCollage: applied to '{0}' ({1} poster(s)).", collection.Name, localPaths.Length);
+                this.logger.Info("CollectionCollage: applied to '{0}' ({1} poster(s)).", collection.Name, localPaths.Count);
             }
             catch (Exception ex)
             {

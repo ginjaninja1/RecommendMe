@@ -123,6 +123,48 @@ namespace RecommendMe.Services
             await this.SendToSessionsAsync(recipientSessions, text).ConfigureAwait(false);
         }
 
+        /// <summary>
+        /// Same delivery path as NotifyRecommendationReceivedAsync (immediate
+        /// if online, queued otherwise) but for an item that appeared in the
+        /// recipient's recommendation collection without going through
+        /// RecommendationService - e.g. an admin adding it directly via the
+        /// Emby UI. Deliberately bypasses PermissionService/recipient
+        /// preference checks entirely: this path is admin-forced by
+        /// definition, not a peer-to-peer recommendation.
+        /// </summary>
+        public async Task NotifyOutOfPluginAdditionAsync(User recipient, string itemName, string mediaType)
+        {
+            var text = BuildMessageText(RecommendationRecord.SystemSenderName, itemName, mediaType);
+            var recipientSessions = this.GetOnlineSessions(recipient.InternalId);
+
+            if (recipientSessions.Length == 0)
+            {
+                this.logger.Info(
+                    "Recipient {0} (user {1}) has no active sessions; queuing out-of-plugin notification for item '{2}'.",
+                    recipient.Name,
+                    recipient.InternalId,
+                    itemName);
+
+                await this.pendingNotificationStore.AddAsync(new PendingNotificationRecord
+                {
+                    RecipientUserId = recipient.InternalId,
+                    RecipientUserName = recipient.Name,
+                    MessageText = text
+                }).ConfigureAwait(false);
+
+                return;
+            }
+
+            this.logger.Info(
+                "Recipient {0} (user {1}) is online across {2} session(s); sending out-of-plugin notification for item '{3}' now.",
+                recipient.Name,
+                recipient.InternalId,
+                recipientSessions.Length,
+                itemName);
+
+            await this.SendToSessionsAsync(recipientSessions, text).ConfigureAwait(false);
+        }
+
         private static string BuildMessageText(string senderName, string itemName, string mediaType)
         {
             return $"{senderName} recommended {mediaType} {itemName}. Check in collections.";

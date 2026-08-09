@@ -27,6 +27,7 @@ namespace RecommendMe.Services
         private readonly IUserManager userManager;
         private readonly CollectionRegistryStore registryStore;
         private readonly AdminSettingsStore adminSettingsStore;
+        private readonly PendingCollectionAddCache pendingCollectionAddCache;
         private readonly ILogger logger;
         private readonly SemaphoreSlim collectionGate = new SemaphoreSlim(1, 1);
 
@@ -36,6 +37,7 @@ namespace RecommendMe.Services
             IUserManager userManager,
             CollectionRegistryStore registryStore,
             AdminSettingsStore adminSettingsStore,
+            PendingCollectionAddCache pendingCollectionAddCache,
             ILogger logger)
         {
             this.collectionManager = collectionManager;
@@ -43,6 +45,7 @@ namespace RecommendMe.Services
             this.userManager = userManager;
             this.registryStore = registryStore;
             this.adminSettingsStore = adminSettingsStore;
+            this.pendingCollectionAddCache = pendingCollectionAddCache;
             this.logger = logger;
         }
 
@@ -174,6 +177,10 @@ namespace RecommendMe.Services
         public async Task AddItemAsync(User recipient, BaseItem item)
         {
             var collection = await this.GetOrCreateCollectionAsync(recipient, item).ConfigureAwait(false);
+
+            // Marked before the call (not after) so the listener can never
+            // observe the resulting event before the mark exists.
+            this.pendingCollectionAddCache.MarkExpected(collection.InternalId, item.InternalId);
 
             // Safe to call even when GetOrCreateCollectionAsync's own
             // CreateCollection call just added `item` as the seed:

@@ -2,7 +2,11 @@
 using System.Linq;
 using System.Threading.Tasks;
 using MediaBrowser.Controller.Collections;
+using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Logging;
+using MediaBrowser.Model.Querying;
+using RecommendMe.Models;
 using RecommendMe.Storage;
 
 namespace RecommendMe.Services
@@ -17,10 +21,14 @@ namespace RecommendMe.Services
     ///
     /// These events fire for every membership change regardless of source -
     /// including CollectionSyncService's own AddToCollection/RemoveFromCollection
-    /// calls, admin manual edits via the Emby UI, and anything else - so this
-    /// listener is the single, self-contained source of truth for collage
-    /// recency tracking. CollectionSyncService itself has no knowledge of
-    /// collages at all.
+    /// calls, admin manual edits via the Emby UI, and anything else. This
+    /// listener uses PendingCollectionAddCache to tell those two cases apart
+    /// for adds: an add this plugin itself just made is expected (marked by
+    /// CollectionSyncService.AddItemAsync just before it happens); anything
+    /// else is an out-of-plugin add, which this listener records into the
+    /// recommendation history as a System-sent recommendation and notifies
+    /// the recipient about, in addition to feeding it into collage recency
+    /// tracking the same as any other add.
     ///
     /// Only reacts to collections registered in CollectionRegistryStore (this
     /// plugin's own "_Recommended_{username}" collections) - unrelated BoxSets
@@ -32,6 +40,11 @@ namespace RecommendMe.Services
         private readonly CollectionRegistryStore registryStore;
         private readonly CollectionCollageStore collageStore;
         private readonly CollectionCollageCoordinator collageCoordinator;
+        private readonly PendingCollectionAddCache pendingCollectionAddCache;
+        private readonly RecommendationStore recommendationStore;
+        private readonly NotificationService notificationService;
+        private readonly IUserManager userManager;
+        private readonly ILibraryManager libraryManager;
         private readonly ILogger logger;
         private readonly object lifecycleLock = new object();
         private bool isSubscribed;
@@ -42,12 +55,22 @@ namespace RecommendMe.Services
             CollectionRegistryStore registryStore,
             CollectionCollageStore collageStore,
             CollectionCollageCoordinator collageCoordinator,
+            PendingCollectionAddCache pendingCollectionAddCache,
+            RecommendationStore recommendationStore,
+            NotificationService notificationService,
+            IUserManager userManager,
+            ILibraryManager libraryManager,
             ILogger logger)
         {
             this.collectionManager = collectionManager;
             this.registryStore = registryStore;
             this.collageStore = collageStore;
             this.collageCoordinator = collageCoordinator;
+            this.pendingCollectionAddCache = pendingCollectionAddCache;
+            this.recommendationStore = recommendationStore;
+            this.notificationService = notificationService;
+            this.userManager = userManager;
+            this.libraryManager = libraryManager;
             this.logger = logger;
         }
 
@@ -119,7 +142,8 @@ namespace RecommendMe.Services
         {
             try
             {
-                if (!await this.IsManagedCollectionAsync(collectionId).ConfigureAwait(false))
+                var registryEntry = await this.GetManagedEntryAsync(collectionId).ConfigureAwait(false);
+                if (registryEntry == null)
                 {
                     return;
                 }
@@ -130,6 +154,11 @@ namespace RecommendMe.Services
                     if (isAdd)
                     {
                         await this.collageStore.RecordItemAddedAsync(collectionId, itemId, now).ConfigureAwait(false);
+
+                        if (!this.pendingCollectionAddCache.TryConsumeExpected(collectionId, itemId))
+                        {
+                            await this.HandleOutOfPluginAddAsync(registryEntry, itemId).ConfigureAwait(false);
+                        }
                     }
                     else
                     {
@@ -137,6 +166,8 @@ namespace RecommendMe.Services
                     }
                 }
 
+                // Out-of-plugin adds feed the collage the same as any other
+                // add - the request goes out regardless of which branch above ran.
                 this.collageCoordinator.RequestRefresh(collectionId);
             }
             catch (Exception ex)
@@ -149,10 +180,79 @@ namespace RecommendMe.Services
             }
         }
 
-        private async Task<bool> IsManagedCollectionAsync(long collectionId)
+        /// <summary>
+        /// An item showed up in a managed "_Recommended_{username}"
+        /// collection without CollectionSyncService.AddItemAsync having put
+        /// it there. Recorded into recommendation history with sender
+        /// RecommendationRecord.SystemSenderName (there is no real sending
+        /// user), and notified immediately/queued exactly like a normal
+        /// recommendation - bypassing PermissionService and recipient
+        /// preferences entirely, since this path is admin-forced by
+        /// definition.
+        /// </summary>
+        private async Task HandleOutOfPluginAddAsync(CollectionRegistryEntry registryEntry, long itemId)
+        {
+            var recipient = this.userManager.GetUserList(new UserQuery())
+                .FirstOrDefault(user => user.InternalId == registryEntry.UserId);
+            if (recipient == null)
+            {
+                this.logger.Warn(
+                    "CollectionCollage: out-of-plugin add of item {0} to collection {1} ignored - recipient user {2} not found.",
+                    itemId,
+                    registryEntry.CollectionId,
+                    registryEntry.UserId);
+                return;
+            }
+
+            var item = this.libraryManager.GetItemById(itemId);
+            if (item == null)
+            {
+                this.logger.Warn(
+                    "CollectionCollage: out-of-plugin add of item {0} to {1}'s collection ignored - item not found.",
+                    itemId,
+                    recipient.Name);
+                return;
+            }
+
+            var mediaType = item.GetType().Name;
+
+            this.logger.Info(
+                "CollectionCollage: detected out-of-plugin add - item {0} '{1}' ({2}) added to {3}'s recommendation collection outside the plugin. Recording as {4} recommendation and notifying.",
+                itemId,
+                item.Name,
+                mediaType,
+                recipient.Name,
+                RecommendationRecord.SystemSenderName);
+
+            var record = new RecommendationRecord
+            {
+                ItemId = itemId,
+                ItemName = item.Name,
+                MediaType = mediaType,
+                SentByUserId = 0,
+                SentByUserName = RecommendationRecord.SystemSenderName,
+                SentToUserId = recipient.InternalId,
+                SentToUserName = recipient.Name,
+                IsPrivate = false
+            };
+
+            await this.recommendationStore.AddAsync(record).ConfigureAwait(false);
+
+            await this.notificationService
+                .NotifyOutOfPluginAdditionAsync(recipient, item.Name, mediaType)
+                .ConfigureAwait(false);
+
+            this.logger.Debug(
+                "CollectionCollage: out-of-plugin recommendation {0} recorded for item {1} -> {2}.",
+                record.RecommendationId,
+                itemId,
+                recipient.Name);
+        }
+
+        private async Task<CollectionRegistryEntry> GetManagedEntryAsync(long collectionId)
         {
             var entries = await this.registryStore.GetAllAsync().ConfigureAwait(false);
-            return entries.Any(entry => entry.CollectionId == collectionId);
+            return entries.FirstOrDefault(entry => entry.CollectionId == collectionId);
         }
     }
 }

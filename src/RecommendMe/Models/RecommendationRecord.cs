@@ -4,6 +4,9 @@ namespace RecommendMe.Models
 {
     internal class RecommendationRecord
     {
+        /// <summary>SentByUserName sentinel for a recommendation recorded from an out-of-plugin collection add (no real sending user).</summary>
+        public const string SystemSenderName = "System";
+
         public Guid RecommendationId { get; set; } = Guid.NewGuid();
 
         public long ItemId { get; set; }
