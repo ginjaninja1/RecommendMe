@@ -50,6 +50,8 @@ namespace RecommendMe.UI.Admin
                 Button1 = new ButtonItem("Apply Collection Naming") { CommandId = CollectionSettingsCommands.Apply }
             }
         };
+
+        public SpacerItem SpacerItem { get; set; } = new SpacerItem();
         public GenericItemList ForumLink { get; set; } = new GenericItemList
         {
             new GenericListItem

@@ -60,7 +60,7 @@ namespace RecommendMe.UI.Recommend
         public List<EditorSelectOption> TargetUserChoices { get; set; } = new List<EditorSelectOption>();
 
         [DisplayName("Private recommendation")]
-        [Description("Only you and the recipient will see this in the recommendation history.")]
+        [Description("Only you and the recipient will see that you made the recomendation in the recommendation history.")]
         [AutoPostBack(RecommendCommands.UpdateFormState, nameof(IsPrivate))]
         public bool IsPrivate { get; set; }
 
