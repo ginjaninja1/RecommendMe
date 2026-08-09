@@ -17,6 +17,19 @@ namespace RecommendMe.UI.Recommend
     /// </summary>
     public class RecommendUI : EditableOptionsBase
     {
+        /// <summary>
+        /// Identifies which user this state belongs to. Stamped by RecommendPageView.User
+        /// on every GetUIView call (page load/tab switch) and echoed back by the client on
+        /// every postback, since the client round-trips the full ContentData object. RunCommand
+        /// uses this - not the framework's IPluginUIView.User field - to resolve the calling
+        /// user: PageControllerHostBase only refreshes IPluginUIView.User on GetUIView, never
+        /// on a postback, and this page's controller instance is shared server-wide across every
+        /// user (see UIPagesManager.controllers, keyed only by pageId), so IPluginUIView.User can
+        /// be left stale by a different user's concurrent page load by the time RunCommand runs.
+        /// </summary>
+        [Browsable(false)]
+        public string OwnerUserId { get; set; } = string.Empty;
+
         public override string EditorTitle => "Recommend";
 
         public override string EditorDescription => "Search your library and recommend something to another user.";

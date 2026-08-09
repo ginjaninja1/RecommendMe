@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading.Tasks;
 using MediaBrowser.Controller;
@@ -23,6 +24,14 @@ namespace RecommendMe.UI.Recommend
         private readonly IJsonSerializer jsonSerializer;
         private readonly MediaSearchService searchService;
         private readonly ILogger logger;
+
+        // This RecommendPageView instance is one singleton shared by every user of the
+        // server (see UIPagesManager.controllers - keyed only by pageId, not by user or
+        // session). SearchTerm/SearchResults/etc. must therefore be isolated per user here
+        // rather than living directly on a single shared ContentData instance, or one
+        // user's search results become visible to the next user who loads the page.
+        private readonly ConcurrentDictionary<string, RecommendUI> userStates =
+            new ConcurrentDictionary<string, RecommendUI>();
 
         public RecommendPageView(PluginInfo pluginInfo, IServerApplicationHost applicationHost, ILogger logger)
             : base(pluginInfo.Id)
@@ -67,27 +76,43 @@ namespace RecommendMe.UI.Recommend
                             return;
                         }
 
-                        var ui = (RecommendUI)this.ContentData;
+                        var ui = this.userStates.GetOrAdd(value.Id, _ => new RecommendUI());
+                        ui.OwnerUserId = value.Id;
                         ui.TargetUserChoices = RecommendViewBuilder.BuildTargetUserChoicesAsync(user).GetAwaiter().GetResult();
                         var allowedTypes = Plugin.Instance.AdminSettingsStore.GetAsync().GetAwaiter().GetResult().GloballyAllowedMediaTypes;
                         ui.MediaTypeChoices = RecommendViewBuilder.BuildMediaTypeChoices(allowedTypes);
                         ui.SelectedMediaTypes = string.Join(",", allowedTypes);
+                        this.ContentData = ui;
                     }
                 }
             }
         }
 
-        /// <summary>Resolves the browsing user from the framework-assigned UserDto. Only valid inside RunCommand.</summary>
-        private User CurrentUser =>
-            this.User != null ? Plugin.Instance.UserManager.GetUserById(this.User.Id) : null;
+        /// <summary>
+        /// Resolves the calling user from an explicit user id rather than the shared
+        /// this.User field - see RecommendUI.OwnerUserId for why this.User is unreliable
+        /// inside RunCommand.
+        /// </summary>
+        private static User ResolveUser(string userId) =>
+            string.IsNullOrEmpty(userId) ? null : Plugin.Instance.UserManager.GetUserById(userId);
 
         public override async Task<IPluginUIView> RunCommand(string itemId, string commandId, string data)
         {
-            var currentUser = this.CurrentUser;
+            // Mirrors the established pattern in this codebase (see the admin
+            // ConfigPageView's HandleSave): explicitly deserialize the posted
+            // payload rather than relying on the framework's own ContentData
+            // reassignment. Done first, and used as the identity source (via
+            // OwnerUserId) rather than this.User - see RecommendUI.OwnerUserId.
+            var incoming = string.IsNullOrEmpty(data)
+                ? null
+                : this.jsonSerializer.DeserializeFromString<RecommendUI>(data);
+
+            var ownerUserId = incoming?.OwnerUserId;
+            var currentUser = ResolveUser(ownerUserId);
 
             if (currentUser == null)
             {
-                var unavailableUi = this.ContentData as RecommendUI ?? new RecommendUI();
+                var unavailableUi = new RecommendUI();
                 unavailableUi.StatusMessage = RecommendViewBuilder.BuildStatusMessage("Could not identify the current user - please reload the page.", false);
                 this.ContentData = unavailableUi;
                 return this;
@@ -103,25 +128,18 @@ namespace RecommendMe.UI.Recommend
                 return this;
             }
 
-            var ui = this.ContentData as RecommendUI ?? new RecommendUI();
+            var ui = this.userStates.GetOrAdd(ownerUserId, _ => new RecommendUI { OwnerUserId = ownerUserId });
             this.ContentData = ui;
 
-            // Mirrors the established pattern in this codebase (see the admin
-            // ConfigPageView's HandleSave): explicitly deserialize the posted
-            // payload rather than relying on the framework's own ContentData
-            // reassignment, and copy across only the real (non-generated)
-            // fields - SearchResults/TargetUserChoices/StatusMessage are
-            // always server-rebuilt, never trusted from the client.
-            if (!string.IsNullOrEmpty(data))
+            // Only copy across the real (non-generated) fields -
+            // SearchResults/TargetUserChoices/StatusMessage are always
+            // server-rebuilt, never trusted from the client.
+            if (incoming != null)
             {
-                var incoming = this.jsonSerializer.DeserializeFromString<RecommendUI>(data);
-                if (incoming != null)
-                {
-                    ui.SearchTerm = incoming.SearchTerm;
-                    ui.SelectedMediaTypes = incoming.SelectedMediaTypes ?? string.Empty;
-                    ui.SelectedTargetUserId = incoming.SelectedTargetUserId;
-                    ui.IsPrivate = incoming.IsPrivate;
-                }
+                ui.SearchTerm = incoming.SearchTerm;
+                ui.SelectedMediaTypes = incoming.SelectedMediaTypes ?? string.Empty;
+                ui.SelectedTargetUserId = incoming.SelectedTargetUserId;
+                ui.IsPrivate = incoming.IsPrivate;
             }
 
             if (commandId == RecommendCommands.Search)

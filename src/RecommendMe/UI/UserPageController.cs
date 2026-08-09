@@ -48,7 +48,7 @@
                     pluginInfo,
                     "RecommendMeHistory",
                     "History",
-                    info => new HistoryPageView(info)),
+                    info => new HistoryPageView(info, this.applicationHost.Resolve<MediaBrowser.Model.Serialization.IJsonSerializer>())),
                 new TabPageController(
                     pluginInfo,
                     "RecommendMeAccount",
