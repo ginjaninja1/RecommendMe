@@ -4,7 +4,7 @@
     <AssemblyName>RecommendMe</AssemblyName>
     <RootNamespace>RecommendMe</RootNamespace>
     <LangVersion>8.0</LangVersion>
-    <Version>0.1.0.7</Version>
+    <Version>0.1.0.10</Version>
     <Nullable>annotations</Nullable>
     <GenerateDependencyFile>false</GenerateDependencyFile>
     <DeployPlugin Condition="'$(DeployPlugin)' == ''">true</DeployPlugin>
@@ -32,6 +32,12 @@
   <ItemGroup>
     <EmbeddedResource Include="thumb.png">
       <LogicalName>$(RootNamespace).thumb.png</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\WatchedStatus\watchedstatus.js">
+      <LogicalName>$(RootNamespace).UI.WatchedStatus.watchedstatus.js</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\WatchedStatus\watchedstatus.template.html">
+      <LogicalName>$(RootNamespace).UI.WatchedStatus.watchedstatus.template.html</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 

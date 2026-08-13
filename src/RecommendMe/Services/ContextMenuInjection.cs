@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Reflection;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Net;
 using MediaBrowser.Model.Logging;
@@ -30,12 +31,24 @@ namespace RecommendMe.Services
                                     id: 'recommendme',
                                     icon: 'recommend'
                                 });
+                                commands.push({
+                                    name: 'WatchedStatus',
+                                    id: 'watchedstatus',
+                                    icon: 'visibility'
+                                });
                             }
 
                             return commands;
                         },
 
                         executeCommand: function executeCommand(command, items, options) {
+                            if (command === 'watchedstatus' && items && items.length === 1) {
+                                return require(['components/recommendme/watchedstatus']).then(function(responses) {
+                                    const watchedStatus = responses[0].default || responses[0];
+                                    return watchedStatus.show(items[0].Id);
+                                });
+                            }
+
                             if (command !== 'recommendme' || !items || items.length !== 1) {
                                 return Promise.resolve();
                             }
@@ -126,6 +139,10 @@ namespace RecommendMe.Services
 
         public static string ModifiedShortcutsString { get; private set; }
 
+        public static MemoryStream WatchedStatusScript { get; private set; }
+
+        public static MemoryStream WatchedStatusTemplate { get; private set; }
+
         public static void Initialize(
             IServerConfigurationManager configurationManager,
             ILogger pluginLogger)
@@ -141,9 +158,27 @@ namespace RecommendMe.Services
 
             var shortcutsPath = Path.Combine(dashboardPath, "modules", "shortcuts.js");
             ModifiedShortcutsString = File.ReadAllText(shortcutsPath) + RecommendScript;
+            WatchedStatusScript = GetResourceStream("UI.WatchedStatus.watchedstatus.js");
+            WatchedStatusTemplate = GetResourceStream("UI.WatchedStatus.watchedstatus.template.html");
             logger.Info(
                 "RecommendMe shortcuts injection initialized from {0}.",
                 shortcutsPath);
+        }
+
+        private static MemoryStream GetResourceStream(string resourceName)
+        {
+            var fullName = typeof(ContextMenuInjection).Namespace
+                .Replace(".Services", string.Empty) + "." + resourceName;
+            var source = typeof(ContextMenuInjection).GetTypeInfo()
+                .Assembly.GetManifestResourceStream(fullName);
+            if (source == null)
+            {
+                throw new InvalidOperationException("Missing embedded resource: " + fullName);
+            }
+
+            var result = new MemoryStream((int)source.Length);
+            source.CopyTo(result);
+            return result;
         }
 
         public static void LogServed(string webPath)
@@ -156,6 +191,18 @@ namespace RecommendMe.Services
 
     [Route("/{Web}/modules/shortcuts.js", "GET", IsHidden = true)]
     public class GetRecommendMeContextMenuScript
+    {
+        public string Web { get; set; }
+    }
+
+    [Route("/{Web}/components/recommendme/watchedstatus.js", "GET", IsHidden = true)]
+    public class GetWatchedStatusScript
+    {
+        public string Web { get; set; }
+    }
+
+    [Route("/{Web}/components/recommendme/watchedstatus.template.html", "GET", IsHidden = true)]
+    public class GetWatchedStatusTemplate
     {
         public string Web { get; set; }
     }
@@ -179,5 +226,17 @@ namespace RecommendMe.Services
                 ContextMenuInjection.ModifiedShortcutsString.AsSpan(),
                 "application/x-javascript");
         }
+
+        public object Get(GetWatchedStatusScript request) =>
+            this.resultFactory.GetResult(
+                this.Request,
+                ContextMenuInjection.WatchedStatusScript.GetBuffer(),
+                "application/x-javascript");
+
+        public object Get(GetWatchedStatusTemplate request) =>
+            this.resultFactory.GetResult(
+                this.Request,
+                ContextMenuInjection.WatchedStatusTemplate.GetBuffer(),
+                "text/html");
     }
 }

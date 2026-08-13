@@ -38,7 +38,12 @@ namespace RecommendMe.Storage
             return data.Entries.Select(Copy).ToList();
         }
 
-        public Task RegisterAsync(long userId, long collectionId, string embyCollectionId)
+        public Task RegisterAsync(
+            long userId,
+            string userName,
+            long collectionId,
+            string collectionName,
+            string embyCollectionId)
         {
             return this.repository.MutateAsync(data =>
             {
@@ -46,6 +51,8 @@ namespace RecommendMe.Storage
                 if (existing != null)
                 {
                     existing.CollectionId = collectionId;
+                    existing.UserName = userName;
+                    existing.CollectionName = collectionName;
                     existing.EmbyCollectionId = embyCollectionId;
                     return;
                 }
@@ -53,7 +60,9 @@ namespace RecommendMe.Storage
                 data.Entries.Add(new CollectionRegistryEntry
                 {
                     UserId = userId,
+                    UserName = userName,
                     CollectionId = collectionId,
+                    CollectionName = collectionName,
                     EmbyCollectionId = embyCollectionId
                 });
             });
@@ -62,7 +71,9 @@ namespace RecommendMe.Storage
         private static CollectionRegistryEntry Copy(CollectionRegistryEntry entry) => new CollectionRegistryEntry
         {
             UserId = entry.UserId,
+            UserName = entry.UserName,
             CollectionId = entry.CollectionId,
+            CollectionName = entry.CollectionName,
             EmbyCollectionId = entry.EmbyCollectionId
         };
     }

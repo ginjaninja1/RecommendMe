@@ -138,6 +138,63 @@ namespace RecommendMe.Services
             }
         }
 
+        public async Task<object> Get(GetWatchedStatus request)
+        {
+            var caller = this.GetCaller();
+            var item = Plugin.Instance.LibraryManager.GetItemById(request.ItemId);
+            var unavailable = await ValidateItemAsync(caller, item).ConfigureAwait(false);
+            if (unavailable != null)
+            {
+                return new WatchedStatusResult { Allowed = false, Message = unavailable };
+            }
+
+            var callerEntry = await Plugin.Instance.PermissionService
+                .EnsureUserAccessEntryAsync(caller)
+                .ConfigureAwait(false);
+            var allUsers = Plugin.Instance.GetAllUsers();
+            foreach (var user in allUsers)
+            {
+                await Plugin.Instance.PermissionService
+                    .EnsureUserAccessEntryAsync(user)
+                    .ConfigureAwait(false);
+            }
+
+            var settings = await Plugin.Instance.AdminSettingsStore.GetAsync().ConfigureAwait(false);
+            var result = new WatchedStatusResult
+            {
+                Allowed = true,
+                ItemName = FormatItemTitle(item)
+            };
+
+            foreach (var user in allUsers.OrderBy(candidate => candidate.Name))
+            {
+                var userEntry = settings.UserAccess.First(entry => entry.UserId == user.InternalId);
+                var permitted = user.InternalId == caller.InternalId ||
+                    PermissionService.IsTargetAllowed(callerEntry, user.InternalId, settings);
+                if (!permitted || userEntry.AccessSuspended || !item.IsVisible(user))
+                {
+                    continue;
+                }
+
+                var userData = Plugin.Instance.UserDataManager.GetUserData(user, item);
+                result.Users.Add(new WatchedStatusUserDto
+                {
+                    UserName = user.Name,
+                    Watched = userData != null && userData.Played,
+                    LastPlayed = userData?.LastPlayedDate,
+                    ResumePositionTicks = userData?.PlaybackPositionTicks ?? 0
+                });
+            }
+
+            Plugin.Instance.Logger.Info(
+                "WatchedStatus returned {0} accessible user(s) for caller {1} ({2}), item {3}.",
+                result.Users.Count,
+                caller.Name,
+                caller.InternalId,
+                request.ItemId);
+            return result;
+        }
+
         private User GetCaller()
         {
             var authorization = this.authorizationContext.GetAuthorizationInfo(this.Request);

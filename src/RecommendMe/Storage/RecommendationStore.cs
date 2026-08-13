@@ -10,10 +10,9 @@ using RecommendMe.Models;
 namespace RecommendMe.Storage
 {
     /// <summary>
-    /// Persists the recommendation history log to recommendations.json. This
-    /// is write-only history for the History dialog and the watched-cleanup
-    /// hook (ResolveWatchedAsync); it is NOT consulted for submission-time
-    /// gating - that check runs against the live collection instead (see
+    /// Persists the recommendation event log to recommendations.json. It is
+    /// not collection state and is not consulted or changed by membership
+    /// reconciliation. Submission-time gating runs against the live collection (see
     /// CollectionSyncService.IsItemInRecipientCollectionAsync /
     /// RecommendationService.SendRecommendationAsync) because this log's
     /// Active status can go stale (e.g. a user manually removes an item from
@@ -47,31 +46,5 @@ namespace RecommendMe.Storage
             return this.repository.MutateAsync(data => data.Records.Add(record));
         }
 
-        /// <summary>
-        /// Marks every Active record for the given (userId, itemId) pair as
-        /// AutoRemovedWatched. Returns the records that were changed, so the
-        /// caller can remove those items from the user's Emby collection.
-        /// </summary>
-        public async Task<List<RecommendationRecord>> ResolveWatchedAsync(long recipientUserId, long itemId)
-        {
-            var changed = new List<RecommendationRecord>();
-
-            await this.repository.MutateAsync(data =>
-            {
-                foreach (var record in data.Records)
-                {
-                    if (record.SentToUserId == recipientUserId
-                        && record.ItemId == itemId
-                        && record.Status == RecommendationStatus.Active)
-                    {
-                        record.Status = RecommendationStatus.AutoRemovedWatched;
-                        record.DateResolvedUtc = DateTime.UtcNow;
-                        changed.Add(record);
-                    }
-                }
-            }).ConfigureAwait(false);
-
-            return changed;
-        }
     }
 }

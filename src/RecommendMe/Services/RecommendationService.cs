@@ -24,6 +24,7 @@ namespace RecommendMe.Services
         private readonly CollectionSyncService collectionSyncService;
         private readonly NotificationService notificationService;
         private readonly RecommendationStore recommendationStore;
+        private readonly CollectionRegistryStore collectionRegistryStore;
         private readonly AdminSettingsStore adminSettingsStore;
         private readonly IUserDataManager userDataManager;
         private readonly IUserManager userManager;
@@ -36,6 +37,7 @@ namespace RecommendMe.Services
             CollectionSyncService collectionSyncService,
             NotificationService notificationService,
             RecommendationStore recommendationStore,
+            CollectionRegistryStore collectionRegistryStore,
             AdminSettingsStore adminSettingsStore,
             IUserDataManager userDataManager,
             IUserManager userManager,
@@ -46,6 +48,7 @@ namespace RecommendMe.Services
             this.collectionSyncService = collectionSyncService;
             this.notificationService = notificationService;
             this.recommendationStore = recommendationStore;
+            this.collectionRegistryStore = collectionRegistryStore;
             this.adminSettingsStore = adminSettingsStore;
             this.userDataManager = userDataManager;
             this.userManager = userManager;
@@ -193,63 +196,182 @@ namespace RecommendMe.Services
         }
 
         /// <summary>
-        /// Called from the IUserDataManager.UserDataSaved hook in Plugin.cs
-        /// whenever a user's play state changes. If the item just became
-        /// "Played" and it's one of this user's active recommendations,
-        /// resolve the record(s) and pull the item out of their collection.
-        /// This still uses the JSON log (unlike the submission gate above) -
-        /// it's the log's one legitimate consumer, since it's the only place
-        /// that knows which sender(s) to eventually show in history as
-        /// "resolved by watching" rather than just vanishing silently.
+        /// Called from the IUserDataManager.UserDataSaved hook in Plugin.cs whenever a user's
+        /// play state becomes Played. Live collection membership decides whether removal is
+        /// required. Recommendation history is an event log and is not changed by removal.
         /// </summary>
-        public async Task HandleItemWatchedAsync(long userId, long itemId, User user)
+        public async Task HandleItemWatchedAsync(long itemId, User user)
         {
-            var resolved = await this.recommendationStore.ResolveWatchedAsync(userId, itemId).ConfigureAwait(false);
-            if (resolved.Count == 0)
+            var isMember = await this.collectionSyncService
+                .IsItemInRecipientCollectionAsync(user, itemId)
+                .ConfigureAwait(false);
+            if (!isMember)
             {
+                this.logger.Debug(
+                    "Watched item {0} is not in {1}'s registered recommendation collection; no cleanup required.",
+                    itemId,
+                    user.Name);
                 return;
             }
 
-            await this.collectionSyncService.RemoveItemAsync(user, itemId).ConfigureAwait(false);
+            if (!await this.collectionSyncService.RemoveItemAsync(user, itemId).ConfigureAwait(false))
+            {
+                this.logger.Warn(
+                    "Could not remove watched item {0} from {1}'s registered recommendation collection.",
+                    itemId,
+                    user.Name);
+                return;
+            }
 
             this.logger.Info(
-                "Auto-removed item {0} from {1}'s recommendation collection after it was watched.",
+                "Auto-removed watched item {0} from {1}'s recommendation collection.",
                 itemId,
                 user.Name);
         }
 
-        /// <summary>Reconciles active recommendations against Emby's current watched state.</summary>
+        /// <summary>
+        /// Reconciles every live member of every registered recommendation collection against
+        /// its owner's current Emby watched state. Recommendation history is neither read nor
+        /// changed: it is an event log, not collection state.
+        /// </summary>
         public async Task<int> ClearWatchedRecommendationsAsync(CancellationToken cancellationToken, IProgress<double> progress)
         {
-            var active = (await this.recommendationStore.GetAllAsync().ConfigureAwait(false))
-                .Where(r => r.Status == RecommendationStatus.Active)
-                .GroupBy(r => new { r.SentToUserId, r.ItemId })
-                .ToArray();
+            var entries = await this.collectionRegistryStore.GetAllAsync().ConfigureAwait(false);
             var users = this.userManager.GetUserList(new UserQuery()).ToDictionary(user => user.InternalId);
             var removed = 0;
+            var assessed = 0;
 
-            for (var i = 0; i < active.Length; i++)
+            this.logger.Info(
+                "Watched-recommendation task found {0} registered recommendation collection(s) and {1} Emby user(s).",
+                entries.Count,
+                users.Count);
+
+            for (var i = 0; i < entries.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                progress?.Report(active.Length == 0 ? 100 : (double)i / active.Length * 100);
+                progress?.Report(entries.Count == 0 ? 100 : (double)i / entries.Count * 100);
 
-                var key = active[i].Key;
-                if (!users.TryGetValue(key.SentToUserId, out var user)) continue;
+                var entry = entries[i];
+                if (!users.TryGetValue(entry.UserId, out var user))
+                {
+                    this.logger.Warn(
+                        "Watched-recommendation task skipped registry entry for missing user {0}; collection={1}, publicId={2}, storedUserName='{3}', storedCollectionName='{4}'.",
+                        entry.UserId,
+                        entry.CollectionId,
+                        entry.EmbyCollectionId,
+                        entry.UserName,
+                        entry.CollectionName);
+                    continue;
+                }
 
-                var item = this.libraryManager.GetItemById(key.ItemId);
-                if (item == null) continue;
+                var collection = this.libraryManager.GetItemById(entry.CollectionId) as BoxSet;
+                if (collection == null)
+                {
+                    this.logger.Warn(
+                        "Watched-recommendation task skipped {0} ({1}): collection {2} does not resolve to a BoxSet.",
+                        user.Name,
+                        user.InternalId,
+                        entry.CollectionId);
+                    continue;
+                }
 
-                var userData = this.userDataManager.GetUserData(user, item);
-                if (userData == null || !userData.Played) continue;
+                var publicId = collection.Id.ToString("N");
+                if (!string.Equals(entry.EmbyCollectionId, publicId, StringComparison.OrdinalIgnoreCase))
+                {
+                    this.logger.Warn(
+                        "Watched-recommendation task skipped {0} ({1}): collection {2} public identity mismatch; registry={3}, live={4}.",
+                        user.Name,
+                        user.InternalId,
+                        entry.CollectionId,
+                        entry.EmbyCollectionId,
+                        publicId);
+                    continue;
+                }
 
-                var resolved = await this.recommendationStore.ResolveWatchedAsync(key.SentToUserId, key.ItemId).ConfigureAwait(false);
-                if (resolved.Count == 0) continue;
+                await this.collectionRegistryStore.RegisterAsync(
+                    user.InternalId,
+                    user.Name,
+                    collection.InternalId,
+                    collection.Name,
+                    publicId).ConfigureAwait(false);
 
-                await this.collectionSyncService.RemoveItemAsync(user, key.ItemId).ConfigureAwait(false);
-                removed++;
+                var itemIds = this.libraryManager.GetInternalItemIds(new InternalItemsQuery
+                {
+                    CollectionIds = new[] { collection.InternalId }
+                });
+
+                this.logger.Info(
+                    "Watched-recommendation task assessing collection '{0}' ({1}, publicId={2}) for user {3} ({4}): {5} member(s).",
+                    collection.Name,
+                    collection.InternalId,
+                    publicId,
+                    user.Name,
+                    user.InternalId,
+                    itemIds.Length);
+
+                foreach (var itemId in itemIds)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    assessed++;
+
+                    var item = this.libraryManager.GetItemById(itemId);
+                    if (item == null)
+                    {
+                        this.logger.Debug(
+                            "Watched-recommendation assessment: collection='{0}', user={1} ({2}), item={3}, result=skipped-item-not-found.",
+                            collection.Name,
+                            user.Name,
+                            user.InternalId,
+                            itemId);
+                        continue;
+                    }
+
+                    var userData = this.userDataManager.GetUserData(user, item);
+                    var watched = userData != null && userData.Played;
+
+                    this.logger.Debug(
+                        "Watched-recommendation assessment: collection='{0}' ({1}), user={2} ({3}), item='{4}' ({5}), watched={6}, lastPlayed={7}, resumeTicks={8}.",
+                        collection.Name,
+                        collection.InternalId,
+                        user.Name,
+                        user.InternalId,
+                        item.Name,
+                        item.InternalId,
+                        watched,
+                        userData?.LastPlayedDate,
+                        userData?.PlaybackPositionTicks ?? 0);
+
+                    if (!watched)
+                    {
+                        continue;
+                    }
+
+                    if (!await this.collectionSyncService.RemoveItemAsync(user, item.InternalId).ConfigureAwait(false))
+                    {
+                        this.logger.Warn(
+                            "Watched-recommendation task failed to remove watched item '{0}' ({1}) from '{2}' for {3}.",
+                            item.Name,
+                            item.InternalId,
+                            collection.Name,
+                            user.Name);
+                        continue;
+                    }
+
+                    removed++;
+                    this.logger.Info(
+                        "Watched-recommendation task removed watched item '{0}' ({1}) from '{2}' for {3}.",
+                        item.Name,
+                        item.InternalId,
+                        collection.Name,
+                        user.Name);
+                }
             }
 
             progress?.Report(100);
+            this.logger.Info(
+                "Watched-recommendation task assessed {0} live collection member(s) and removed {1} watched item(s).",
+                assessed,
+                removed);
             return removed;
         }
     }

@@ -128,6 +128,7 @@ namespace RecommendMe
                 this.CollectionSyncService,
                 this.NotificationService,
                 this.RecommendationStore,
+                this.CollectionRegistryStore,
                 this.AdminSettingsStore,
                 this.userDataManager,
                 this.UserManager,
@@ -175,6 +176,8 @@ namespace RecommendMe
         internal ILibraryManager LibraryManager { get; }
 
         internal ISessionManager SessionManager { get; }
+
+        internal IUserDataManager UserDataManager => this.userDataManager;
 
         /// <summary>Exposed for UI-layer code (e.g. HistoryViewBuilder) that isn't DI-constructed and has no other route to the plugin's logger.</summary>
         internal ILogger Logger => this.logger;
@@ -334,7 +337,6 @@ namespace RecommendMe
                 // I/O. Register the task while holding the lifecycle lock so
                 // Dispose cannot miss work that has already been accepted.
                 task = Task.Run(() => this.HandleItemWatchedAsync(
-                    e.User.InternalId,
                     e.Item.InternalId,
                     e.User));
                 this.backgroundTasks.Add(task);
@@ -353,7 +355,7 @@ namespace RecommendMe
                 TaskScheduler.Default);
         }
 
-        private async Task HandleItemWatchedAsync(long userId, long itemId, User user)
+        private async Task HandleItemWatchedAsync(long itemId, User user)
         {
             try
             {
@@ -369,7 +371,7 @@ namespace RecommendMe
                 }
 
                 await this.RecommendationService
-                    .HandleItemWatchedAsync(userId, itemId, user)
+                    .HandleItemWatchedAsync(itemId, user)
                     .ConfigureAwait(false);
             }
             catch (Exception ex)

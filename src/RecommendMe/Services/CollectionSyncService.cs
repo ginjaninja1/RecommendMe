@@ -92,6 +92,12 @@ namespace RecommendMe.Services
                 var existingItem = this.libraryManager.GetItemById(registryEntry.CollectionId) as BoxSet;
                 if (existingItem != null && RegistryIdentityMatches(registryEntry, existingItem))
                 {
+                    await this.registryStore.RegisterAsync(
+                        recipient.InternalId,
+                        recipient.Name,
+                        existingItem.InternalId,
+                        existingItem.Name,
+                        PublicId(existingItem)).ConfigureAwait(false);
                     return existingItem;
                 }
 
@@ -119,7 +125,12 @@ namespace RecommendMe.Services
                     $"CreateCollection returned no BoxSet for '{name}' (seed item {seedItem.InternalId}).");
             }
 
-            await this.registryStore.RegisterAsync(recipient.InternalId, created.InternalId, PublicId(created)).ConfigureAwait(false);
+            await this.registryStore.RegisterAsync(
+                recipient.InternalId,
+                recipient.Name,
+                created.InternalId,
+                created.Name,
+                PublicId(created)).ConfigureAwait(false);
 
             return created;
         }
@@ -168,7 +179,12 @@ namespace RecommendMe.Services
                     result.Renamed++;
                 }
 
-                await this.registryStore.RegisterAsync(entry.UserId, collection.InternalId, PublicId(collection)).ConfigureAwait(false);
+                await this.registryStore.RegisterAsync(
+                    user.InternalId,
+                    user.Name,
+                    collection.InternalId,
+                    collection.Name,
+                    PublicId(collection)).ConfigureAwait(false);
             }
 
             return result;
@@ -196,21 +212,33 @@ namespace RecommendMe.Services
                 recipient.Name);
         }
 
-        public async Task RemoveItemAsync(User recipient, long itemId)
+        public async Task<bool> RemoveItemAsync(User recipient, long itemId)
         {
             var entry = await this.registryStore.GetAsync(recipient.InternalId).ConfigureAwait(false);
             if (entry == null)
             {
-                return;
+                this.logger.Warn(
+                    "Cannot remove item {0} for {1} ({2}): no registered recommendation collection.",
+                    itemId,
+                    recipient.Name,
+                    recipient.InternalId);
+                return false;
             }
 
             var collection = this.libraryManager.GetItemById(entry.CollectionId) as BoxSet;
             if (collection == null || !RegistryIdentityMatches(entry, collection))
             {
-                return;
+                this.logger.Warn(
+                    "Cannot remove item {0} for {1} ({2}): registered collection {3} identity does not resolve.",
+                    itemId,
+                    recipient.Name,
+                    recipient.InternalId,
+                    entry.CollectionId);
+                return false;
             }
 
             this.collectionManager.RemoveFromCollection(collection, new[] { itemId });
+            return true;
         }
 
         /// <summary>
