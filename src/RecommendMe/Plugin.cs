@@ -3,6 +3,7 @@ using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Collections;
+using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Drawing;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
@@ -49,6 +50,10 @@ namespace RecommendMe
         {
             this.applicationHost = applicationHost;
             this.logger = logManager.GetLogger(this.Name);
+
+            ContextMenuInjection.Initialize(
+                applicationHost.Resolve<IServerConfigurationManager>(),
+                this.logger);
 
             // --- Storage layer -------------------------------------------------
             var appPaths = applicationHost.Resolve<IApplicationPaths>();
