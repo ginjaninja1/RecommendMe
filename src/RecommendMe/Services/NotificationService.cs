@@ -191,7 +191,7 @@ namespace RecommendMe.Services
             {
                 Header = "New Recommendation",
                 Text = text,
-                TimeoutMs = 8000
+                TimeoutMs = 15000
             };
 
             var sends = sessions.Select(session => this.SendAsync(session.Id, command));
