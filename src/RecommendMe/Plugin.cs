@@ -10,6 +10,7 @@ using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Plugins;
 using MediaBrowser.Controller.Session;
 using MediaBrowser.Model.Drawing;
+using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.IO;
 using MediaBrowser.Model.Logging;
 using MediaBrowser.Model.Plugins.UI;
@@ -319,7 +320,12 @@ namespace RecommendMe
 
         private void OnUserDataSaved(object sender, UserDataSaveEventArgs e)
         {
-            if (e?.User == null || e.Item == null || e.UserData == null || !e.UserData.Played)
+            if (e?.User == null
+                || e.Item == null
+                || e.UserData == null
+                || !e.UserData.Played
+                || (e.SaveReason != UserDataSaveReason.PlaybackFinished
+                    && e.SaveReason != UserDataSaveReason.TogglePlayed))
             {
                 return;
             }
